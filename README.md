@@ -16,19 +16,21 @@
 |---|---|
 | ![before](screenshots/before-stock.jpg) | ![after](screenshots/after-light.jpg) |
 
-A single custom `View`, one Canvas, no WebView, no dependencies. 181 KB APK.
+A single custom `View`, one Canvas, no WebView, no dependencies. 180 KB APK.
 Smooth on low-end TV SoCs because everything expensive (card shadows, mirror
 reflections, icons) is **baked into bitmaps once at startup** — the render loop
 only warps prefabbed textures into quads.
 
-https://github.com/user-attachments/assets/placeholder → see [`promo/tv-home-promo.mp4`](promo/tv-home-promo.mp4)
+<p align="center">
+  <a href="promo/tv-home-promo.mp4"><img src="promo/poster.jpg" width="720" alt="10 second teaser"></a>
+</p>
 
 ---
 
 ## What you get
 
 - **Cover Flow carousel** — 9 tiles in 3D perspective, the centre tile overlaps its
-  neighbours, arrow keys slide with a 590 ms-ish eased transition.
+  neighbours, arrow keys slide with a 420 ms eased transition.
 - **Glossy floor reflections** — a mirrored, blurred copy of each tile that fades into
   the background. Reflections never stack colour: each tile's texture carries an
   opaque floor patch, so the tile nearest the centre always erases the one behind it.
@@ -75,9 +77,15 @@ If it doesn't appear in the HOME chooser, that's the allow-list problem — read
 
 ### Restore the stock launcher
 
+Note the stock home activity **before** you start, then you can always go back:
+
 ```bash
+# before installing anything
+adb shell cmd package resolve-activity -c android.intent.category.HOME   # write this down
+
+# later, to go back (Skyworth example)
 adb shell cmd package set-home-activity com.tianci.movieplatform/com.coocaa.homepage.vast.HomePageActivity
-# or simply
+# or just remove the launcher
 adb uninstall <homeApplicationId>
 ```
 

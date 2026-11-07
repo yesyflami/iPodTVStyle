@@ -17,11 +17,15 @@
 | ![before](screenshots/before-stock.jpg) | ![after](screenshots/after-light.jpg) |
 
 整套 UI 是**一个自定义 View + 一块 Canvas**，没有 WebView、没有第三方依赖，
-APK 只有 181 KB。能在低端电视 SoC 上跑顺，是因为所有昂贵的东西 ——
+APK 只有 180 KB。能在低端电视 SoC 上跑顺，是因为所有昂贵的东西 ——
 卡片阴影、落地倒影、图标 —— 都在启动时**一次性烘焙成位图**，
 每帧只做"把预制贴图按投影矩阵贴到四个角上"。
 
-宣传片：[`promo/tv-home-promo.mp4`](promo/tv-home-promo.mp4)（10 秒）
+宣传片（10 秒）：
+
+<p align="center">
+  <a href="promo/tv-home-promo.mp4"><img src="promo/poster.jpg" width="720" alt="10 秒宣传片"></a>
+</p>
 
 ---
 
