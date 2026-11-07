@@ -29,9 +29,9 @@
 ![root](https://img.shields.io/badge/root-not%20required-f97316?style=flat&labelColor=2f353d)
 ![deps](https://img.shields.io/badge/dependencies-none-0ea5e9?style=flat&labelColor=2f353d)
 
-▶ **MIT 许可，随便用。** Fork、改造、发布都行，保留版权声明即可。
-▶ **你的电视还是你的。** 不卸载任何东西 —— 原厂桌面还在机器里，一条命令就能回去。
-▶ **第一次来？** 先看 **[docs/ADAPT.md](docs/ADAPT.md)**，九成问题都出在包名上。
+▶ **MIT 许可，随便用。** Fork、改造、发布都行，保留版权声明即可。<br>
+▶ **你的电视还是你的。** 不卸载任何东西 —— 原厂桌面还在机器里，一条命令就能回去。<br>
+▶ **第一次来？** 先看 **[docs/ADAPT.md](docs/ADAPT.md)**，九成问题都出在包名上。<br>
 ▶ **10 秒宣传片** → [promo/tv-home-promo.mp4](promo/tv-home-promo.mp4)
 
 ---
@@ -136,12 +136,9 @@ adb uninstall <homeApplicationId>
 
 ## 致谢
 
-▶ **[CleanYourTV](https://github.com/Gathin23/cleanyourtv)** / [@Gathin23](https://github.com/Gathin23) ——
-这个项目证明了"不 root、纯 Wi-Fi、一条命令可还原"地换掉广告首页是可行的。
-如果你还想清掉预装臃肿软件，从那边开始，再把 iPodTVStyle 当作替换的桌面。
-▶ 视觉语言致敬 2007 年的 iPod nano / iTunes Cover Flow。
-▶ Roboto Black / Medium 运行时从 `/system/fonts` 读取，没有打包进 APK。
-内嵌的衬线子集来自 Songti SC，见 [NOTICE.md](NOTICE.md)。
+▶ **[CleanYourTV](https://github.com/Gathin23/cleanyourtv)** / [@Gathin23](https://github.com/Gathin23) —— 这个项目证明了"不 root、纯 Wi-Fi、一条命令可还原"地换掉广告首页是可行的。如果你还想清掉预装臃肿软件，从那边开始，再把 iPodTVStyle 当作替换的桌面。<br>
+▶ 视觉语言致敬 2007 年的 iPod nano / iTunes Cover Flow。<br>
+▶ Roboto Black / Medium 运行时从 `/system/fonts` 读取，没有打包进 APK。内嵌的衬线子集来自 Songti SC，见 [NOTICE.md](NOTICE.md)。
 
 ## 许可
 

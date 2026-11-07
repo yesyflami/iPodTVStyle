@@ -29,11 +29,9 @@
 ![root](https://img.shields.io/badge/root-not%20required-f97316?style=flat&labelColor=2f353d)
 ![deps](https://img.shields.io/badge/dependencies-none-0ea5e9?style=flat&labelColor=2f353d)
 
-▶ **MIT, do what you want with it.** Fork it, ship it, just keep the notice.
-▶ **Your TV stays yours.** Nothing is uninstalled — the stock launcher is still on the
-device and comes back with one command.
-▶ **New here?** Read **[docs/ADAPT.md](docs/ADAPT.md)** — it is almost always the
-package name that trips people up.
+▶ **MIT, do what you want with it.** Fork it, ship it, just keep the notice.<br>
+▶ **Your TV stays yours.** Nothing is uninstalled — the stock launcher is still on the device and comes back with one command.<br>
+▶ **New here?** Read **[docs/ADAPT.md](docs/ADAPT.md)** — it is almost always the package name that trips people up.<br>
 ▶ **Ten second teaser** → [promo/tv-home-promo.mp4](promo/tv-home-promo.mp4)
 
 ---
@@ -142,13 +140,9 @@ pipeline, the occlusion clipping and the frame budget are all explained there.
 
 ## Credits
 
-▶ **[CleanYourTV](https://github.com/Gathin23/cleanyourtv)** by [@Gathin23](https://github.com/Gathin23) —
-the project that proved an ad-filled Android TV home screen can be replaced over Wi-Fi
-without root, and one command to undo. If you also want the bloatware gone, start there
-and use iPodTVStyle as the replacement home screen.
-▶ The visual language is a love letter to the 2007 iPod nano / iTunes Cover Flow.
-▶ Roboto Black and Roboto Medium are read from `/system/fonts` at runtime, not bundled.
-The serif subset is derived from Songti SC — see [NOTICE.md](NOTICE.md).
+▶ **[CleanYourTV](https://github.com/Gathin23/cleanyourtv)** by [@Gathin23](https://github.com/Gathin23) — the project that proved an ad-filled Android TV home screen can be replaced over Wi-Fi without root, and one command to undo. If you also want the bloatware gone, start there and use iPodTVStyle as the replacement home screen.<br>
+▶ The visual language is a love letter to the 2007 iPod nano / iTunes Cover Flow.<br>
+▶ Roboto Black and Roboto Medium are read from `/system/fonts` at runtime, not bundled. The serif subset is derived from Songti SC — see [NOTICE.md](NOTICE.md).
 
 ## License
 
