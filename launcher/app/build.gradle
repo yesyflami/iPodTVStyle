@@ -1,0 +1,35 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The package name your TV's firmware expects for its Home app. See docs/ADAPT.md:
+// on Skyworth / SkyOS this must stay com.coocaa.tvhome or the system will refuse to
+// treat the launcher as the default home screen.
+def homeAppId = project.findProperty('homeApplicationId') ?: 'com.ipodtvstyle.home'
+
+android {
+    namespace 'com.yesy.carouselhome'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId homeAppId
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

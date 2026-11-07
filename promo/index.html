@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>客厅桌面 · 宣传片</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#000;overflow:hidden}
+  #stage{
+    position:relative;width:1920px;height:1080px;overflow:hidden;
+    background:#000;color:#fff;
+    font-family:"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .shot{position:absolute;inset:0;will-change:opacity,transform}
+  .plate{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;will-change:transform}
+  .vignette{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 45%,transparent 40%,rgba(0,0,0,.55) 100%)}
+  .dim{position:absolute;inset:0;background:rgba(0,0,0,.40);pointer-events:none}
+  .scrim{position:absolute;left:0;right:0;bottom:0;height:40%;pointer-events:none;
+    background:linear-gradient(to top,rgba(0,0,0,.86),rgba(0,0,0,.45) 42%,transparent)}
+
+  .chip{
+    position:absolute;left:88px;top:88px;display:flex;align-items:center;gap:14px;
+    padding:14px 26px;border-radius:999px;background:rgba(0,0,0,.55);
+    backdrop-filter:blur(8px);
+    font-size:24px;font-weight:700;letter-spacing:.18em;
+  }
+  .chip .dot{width:12px;height:12px;border-radius:50%}
+
+  .cap{
+    position:absolute;left:96px;bottom:96px;font-size:46px;font-weight:600;letter-spacing:.02em;
+    text-shadow:0 4px 28px rgba(0,0,0,.75);
+  }
+  .cap small{display:block;font-size:24px;font-weight:400;opacity:.66;margin-top:12px;letter-spacing:.14em}
+
+  .headline{
+    position:absolute;left:96px;bottom:170px;font-family:"Songti SC","STSong",serif;
+    font-weight:700;font-size:110px;line-height:1.12;letter-spacing:.01em;
+    text-shadow:0 8px 44px rgba(0,0,0,.65);
+  }
+  .headline em{font-style:normal;color:#3ddc7f}
+
+  .flash{position:absolute;inset:0;background:#fff;opacity:0}
+
+  /* detail card on a blurred backdrop */
+  .detail-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    filter:blur(34px) brightness(.38) saturate(.8);transform:scale(1.12)}
+  .glass{
+    position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);
+    border-radius:20px;overflow:hidden;
+    box-shadow:0 48px 140px rgba(0,0,0,.62),0 0 0 1px rgba(255,255,255,.14);
+    background:#fff;
+  }
+  .glass img{display:block;width:100%;height:auto}
+  .glass.dark{background:#000}
+
+  /* split compare */
+  .half{position:absolute;top:0;height:100%;width:50%;overflow:hidden;will-change:transform}
+  .half.left{left:0}
+  .half.right{left:50%}
+  .half img{position:absolute;top:0;width:1920px;height:1080px;object-fit:cover}
+  .half.left img{left:0}
+  .half.right img{left:-960px}
+  .divider{position:absolute;left:960px;top:0;width:2px;height:100%;
+    background:rgba(255,255,255,.9);transform-origin:center;box-shadow:0 0 40px rgba(0,0,0,.6)}
+  .tag{position:absolute;top:84px;font-size:24px;font-weight:700;letter-spacing:.2em;
+    text-shadow:0 3px 18px rgba(0,0,0,.7)}
+  .tag.old{left:96px;color:#ff8f86}
+  .tag.new{right:96px;color:#66e59a}
+
+  .rule{position:absolute;left:96px;bottom:112px;height:3px;background:#fff;opacity:.9}
+  .note{position:absolute;right:96px;bottom:96px;font-size:22px;letter-spacing:.16em;opacity:0}
+</style>
+</head>
+<body>
+<div id="stage" data-om-exportable-video-with-duration-secs="10.4">
+
+  <!-- 1 BEFORE -->
+  <section class="shot" id="s-before">
+    <img class="plate" id="p-before" src="assets/before.jpg" alt="">
+    <div class="dim"></div><div class="vignette"></div><div class="scrim"></div>
+    <div class="chip" id="chip-before"><span class="dot" style="background:#ff3b30"></span><span>之前</span></div>
+    <div class="cap" id="cap-before">原厂桌面 · 信息流铺满<small>NOISE / ENDLESS FEED</small></div>
+  </section>
+
+  <!-- 2 AFTER -->
+  <section class="shot" id="s-after" style="opacity:0">
+    <img class="plate" id="p-after" src="assets/after-light.jpg" alt="">
+    <div class="vignette"></div><div class="scrim"></div>
+    <div class="chip" id="chip-after"><span class="dot" style="background:#22c55e"></span><span>之后</span></div>
+    <div class="cap" id="cap-after">一屏只有一件事</div>
+  </section>
+
+  <!-- 3 MOTION -->
+  <section class="shot" id="s-motion" style="opacity:0">
+    <img class="plate" id="p-motion" src="assets/motion.jpg" alt="">
+    <div class="vignette"></div><div class="scrim"></div>
+    <div class="cap" id="cap-motion">方向键滑动 · 卡片带倒影<small>COVER FLOW</small></div>
+  </section>
+
+  <!-- 4 DARK -->
+  <section class="shot" id="s-dark" style="opacity:0">
+    <img class="plate" id="p-dark" src="assets/after-dark.jpg" alt="">
+    <div class="vignette"></div><div class="scrim"></div>
+    <div class="cap" id="cap-dark">深浅一键切换<small>DARK / LIGHT</small></div>
+  </section>
+
+  <!-- 5 REFLECTION detail -->
+  <section class="shot" id="s-ref" style="opacity:0">
+    <img class="detail-bg" src="assets/after-light.jpg" alt="">
+    <div class="glass" id="glass-ref" style="width:1180px"><img id="p-ref" src="assets/detail-reflection.jpg" alt=""></div>
+    <div class="scrim" style="height:30%"></div>
+    <div class="cap" id="cap-ref" style="font-size:38px">倒影贴地 · 互不重叠</div>
+  </section>
+
+  <!-- 6 HEADER detail -->
+  <section class="shot" id="s-hdr" style="opacity:0">
+    <img class="detail-bg" src="assets/after-light.jpg" alt="">
+    <div class="glass" id="glass-hdr" style="width:780px;top:40%"><img id="p-hdr" src="assets/detail-header.jpg" alt=""></div>
+    <div class="scrim" style="height:30%"></div>
+    <div class="cap" id="cap-hdr" style="font-size:38px">时钟 · 设置 · Wi-Fi</div>
+  </section>
+
+  <!-- 7 SPLIT -->
+  <section class="shot" id="s-split" style="opacity:0">
+    <div class="half left" id="half-left"><img src="assets/before.jpg" alt=""></div>
+    <div class="half right" id="half-right"><img src="assets/after-light.jpg" alt=""></div>
+    <div class="divider" id="split-rule"></div>
+    <div class="tag old" id="tag-old">之前</div>
+    <div class="tag new" id="tag-new">之后</div>
+    <div class="scrim" style="height:26%"></div>
+    <div class="cap" id="cap-split" style="left:0;right:0;text-align:center;font-size:42px">同一块屏幕</div>
+  </section>
+
+  <!-- 8 END -->
+  <section class="shot" id="s-end" style="opacity:0">
+    <img class="plate" id="p-end" src="assets/after-light.jpg" alt="">
+    <div class="vignette"></div><div class="scrim" style="height:62%"></div>
+    <div class="headline" id="end-title">客厅桌面<br><em>可以这样</em></div>
+    <div class="rule" id="end-rule"></div>
+    <div class="note" id="end-note">CAROUSEL HOME · 2026</div>
+  </section>
+
+  <div class="flash" id="flash"></div>
+</div>
+
+<script>
+(() => {
+  const DURATION = 10.4;
+  const T = {
+    beforeEnd: 1.45, flashAt: 1.62, afterIn: 1.72, afterMid: 2.30,
+    motionIn: 3.35, darkIn: 4.55, refIn: 5.35, hdrIn: 6.15,
+    splitIn: 7.00, endIn: 8.60, end: 10.40
+  };
+
+  const el = id => document.getElementById(id);
+  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+  const seg = (t, a, b) => clamp((t - a) / (b - a));
+  const easeOut = p => 1 - Math.pow(1 - p, 3);
+  const easeOutQuint = p => 1 - Math.pow(1 - p, 5);
+  const easeInOut = p => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+  const lerp = (a, b, p) => a + (b - a) * p;
+
+  const show = (n, o) => {
+    if (!n) return;
+    n.style.opacity = o.toFixed(3);
+    n.style.visibility = o <= 0.002 ? 'hidden' : 'visible';
+  };
+  const plate = (n, s, x = 0, y = 0) => {
+    if (n) n.style.transform = `translate3d(${x.toFixed(2)}px,${y.toFixed(2)}px,0) scale(${s.toFixed(4)})`;
+  };
+
+  function render(t) {
+    t = clamp(t, 0, DURATION);
+
+    /* 1 BEFORE — push in, then cut */
+    const beforeOut = seg(t, T.beforeEnd - .16, T.beforeEnd);
+    show(el('s-before'), 1 - beforeOut);
+    const bp = easeOut(seg(t, 0, T.beforeEnd));
+    plate(el('p-before'), lerp(1.02, 1.13, bp), lerp(0, -20, bp), lerp(0, -10, bp));
+    show(el('cap-before'), easeOutQuint(seg(t, .16, .62)) * (1 - seg(t, 1.02, 1.30)));
+    show(el('chip-before'), easeOut(seg(t, .04, .30)) * (1 - beforeOut));
+
+    /* flash on the cut */
+    const fl = (t > T.flashAt - .10 && t < T.flashAt + .17)
+      ? 1 - Math.abs((t - T.flashAt) / .135) : 0;
+    el('flash').style.opacity = Math.max(0, fl).toFixed(3);
+
+    /* 2 AFTER — settle from a big zoom */
+    const afterIn = seg(t, T.afterIn, T.afterIn + .50);
+    show(el('s-after'), afterIn * (1 - seg(t, T.motionIn - .10, T.motionIn)));
+    const ap = easeOut(seg(t, T.afterIn, T.afterMid + .45));
+    plate(el('p-after'), lerp(1.22, 1.005, ap), lerp(26, 0, ap), 0);
+    show(el('cap-after'), easeOutQuint(seg(t, 2.02, 2.40)) * (1 - seg(t, 2.92, 3.16)));
+    show(el('chip-after'), afterIn * (1 - seg(t, 2.86, 3.14)));
+
+    /* 3 MOTION — lateral pan */
+    const mo = seg(t, T.motionIn, T.motionIn + .20);
+    show(el('s-motion'), mo * (1 - seg(t, T.darkIn - .08, T.darkIn)));
+    const mp = easeInOut(seg(t, T.motionIn, T.darkIn));
+    plate(el('p-motion'), lerp(1.12, 1.02, mp), lerp(64, -44, mp), 0);
+    show(el('cap-motion'), easeOutQuint(seg(t, 3.58, 3.92)) * (1 - seg(t, 4.28, 4.48)));
+
+    /* 4 DARK */
+    const dk = seg(t, T.darkIn, T.darkIn + .26);
+    show(el('s-dark'), dk * (1 - seg(t, T.refIn - .07, T.refIn)));
+    const dp = easeOut(seg(t, T.darkIn, T.refIn));
+    plate(el('p-dark'), lerp(1.07, 1.0, dp), 0, lerp(-12, 0, dp));
+    show(el('cap-dark'), easeOutQuint(seg(t, 4.72, 5.02)) * (1 - seg(t, 5.16, 5.32)));
+
+    /* 5 REFLECTION detail card */
+    const rf = seg(t, T.refIn, T.refIn + .18);
+    show(el('s-ref'), rf * (1 - seg(t, T.hdrIn - .05, T.hdrIn)));
+    const rp = easeOutQuint(seg(t, T.refIn, T.hdrIn - .05));
+    el('glass-ref').style.transform =
+      `translate(-50%,-50%) scale(${lerp(.9, 1.0, rp).toFixed(4)})`;
+    el('glass-ref').style.opacity = rp.toFixed(3);
+    show(el('cap-ref'), easeOutQuint(seg(t, 5.52, 5.86)) * (1 - seg(t, 6.0, 6.14)));
+
+    /* 6 HEADER detail card */
+    const hd = seg(t, T.hdrIn, T.hdrIn + .18);
+    show(el('s-hdr'), hd * (1 - seg(t, T.splitIn - .05, T.splitIn)));
+    const hp = easeOutQuint(seg(t, T.hdrIn, T.splitIn - .05));
+    el('glass-hdr').style.transform =
+      `translate(-50%,-50%) scale(${lerp(.92, 1.0, hp).toFixed(4)})`;
+    el('glass-hdr').style.opacity = hp.toFixed(3);
+    show(el('cap-hdr'), easeOutQuint(seg(t, 6.32, 6.62)) * (1 - seg(t, 6.78, 6.98)));
+
+    /* 7 SPLIT — halves slide in and meet */
+    const sp = seg(t, T.splitIn, T.splitIn + .34);
+    show(el('s-split'), sp * (1 - seg(t, T.endIn - .10, T.endIn)));
+    const slide = easeOutQuint(seg(t, T.splitIn, T.splitIn + .70));
+    el('half-left').style.transform = `translateX(${((1 - slide) * -960).toFixed(1)}px)`;
+    el('half-right').style.transform = `translateX(${((1 - slide) * 960).toFixed(1)}px)`;
+    el('split-rule').style.transform = `scaleY(${slide.toFixed(4)})`;
+    el('half-left').style.opacity = el('half-right').style.opacity = slide.toFixed(3);
+    show(el('tag-old'), easeOut(seg(t, 7.30, 7.58)));
+    show(el('tag-new'), easeOut(seg(t, 7.36, 7.64)));
+    show(el('cap-split'), easeOutQuint(seg(t, 7.52, 7.86)) * (1 - seg(t, 8.28, 8.52)));
+
+    /* 8 END */
+    show(el('s-end'), seg(t, T.endIn, T.endIn + .30));
+    const ep = easeOut(seg(t, T.endIn, DURATION));
+    plate(el('p-end'), lerp(1.10, 1.0, ep), 0, lerp(12, 0, ep));
+    const titleP = easeOutQuint(seg(t, 8.92, 9.46));
+    el('end-title').style.opacity = titleP.toFixed(3);
+    el('end-title').style.transform = `translateY(${lerp(46, 0, titleP).toFixed(1)}px)`;
+    const ruleP = easeOutQuint(seg(t, 9.44, 9.98));
+    el('end-rule').style.width = (ruleP * 700).toFixed(1) + 'px';
+    el('end-note').style.opacity = (ruleP * .58).toFixed(3);
+  }
+
+  let playing = false, clock = 0, raf = 0, last = 0;
+  function tick(now) {
+    if (!playing) return;
+    if (!last) last = now;
+    clock += (now - last) / 1000; last = now;
+    if (clock > DURATION) clock = 0;
+    render(clock);
+    raf = requestAnimationFrame(tick);
+  }
+
+  window.__animStage = {
+    duration: DURATION,
+    setTime(s) { clock = s; render(s); },
+    setPlaying(next) {
+      playing = !!next; last = 0;
+      cancelAnimationFrame(raf);
+      if (playing) raf = requestAnimationFrame(tick);
+    }
+  };
+
+  document.addEventListener('data-om-seek-to-time-frame', e => {
+    window.__animStage.setPlaying(false);
+    window.__animStage.setTime((e.detail && e.detail.time) || 0);
+  });
+
+  const fixed = new URLSearchParams(location.search).get('t');
+  if (fixed !== null) render(parseFloat(fixed) || 0);
+  else { render(0); window.__animStage.setPlaying(true); }
+})();
+</script>
+</body>
+</html>
