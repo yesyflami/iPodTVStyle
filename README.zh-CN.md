@@ -14,8 +14,7 @@
 
 <p align="center">
   <a href="README.md">English</a> ·
-  <a href="promo/tv-home-promo.mp4">看效果</a> ·
-  <a href="screenshots/">截图</a> ·
+  <a href="screenshots/">看效果 / 截图</a> ·
   <a href="#三步跑起来">如何安装</a> ·
   <a href="docs/ADAPT.md">适配你的电视</a> ·
   <a href="docs/HOW-IT-WORKS.md">实现原理</a> ·
@@ -38,7 +37,6 @@
 ▶ **MIT 许可，随便用。** Fork、改造、发布都行，保留版权声明即可。<br>
 ▶ **你的电视还是你的。** 不卸载任何东西 —— 原厂桌面还在机器里，一条命令就能回去。<br>
 ▶ **第一次来？** 先看 **[docs/ADAPT.md](docs/ADAPT.md)**，九成问题都出在包名上。<br>
-▶ **10 秒宣传片** → [promo/tv-home-promo.mp4](promo/tv-home-promo.mp4)
 
 ---
 

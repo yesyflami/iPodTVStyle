@@ -16,3 +16,6 @@ captures/
 # promo render pipeline scratch
 promo/frames/
 promo/*.png.tmp
+
+# promo render output (regenerate with promo/render.sh)
+promo/*.mp4

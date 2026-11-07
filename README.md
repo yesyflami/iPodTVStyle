@@ -14,7 +14,6 @@
 
 <p align="center">
   <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="promo/tv-home-promo.mp4">Watch the demo</a> ·
   <a href="screenshots/">Screenshots</a> ·
   <a href="#quick-start">How to install</a> ·
   <a href="docs/ADAPT.md">Adapt to your TV</a> ·
@@ -42,7 +41,6 @@
 ▶ **MIT, do what you want with it.** Fork it, ship it, just keep the notice.<br>
 ▶ **Your TV stays yours.** Nothing is uninstalled — the stock launcher is still on the device and comes back with one command.<br>
 ▶ **New here?** Read **[docs/ADAPT.md](docs/ADAPT.md)** — it is almost always the package name that trips people up.<br>
-▶ **Ten second teaser** → [promo/tv-home-promo.mp4](promo/tv-home-promo.mp4)
 
 ---
 
