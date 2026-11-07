@@ -1,14 +1,14 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
-    <img src="assets/logo-light.png" width="130" alt="iPodTVStyle">
+    <img src="assets/logo-light.png" width="200" alt="iPodTVStyle">
   </picture>
 </p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/wordmark-dark.png">
-    <img src="assets/wordmark-light.png" width="430" alt="iPodTVStyle">
+    <img src="assets/wordmark-light.png" width="460" alt="iPodTVStyle">
   </picture>
 </p>
 
