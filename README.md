@@ -12,6 +12,16 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="promo/tv-home-promo.mp4">Watch the demo</a> ·
+  <a href="screenshots/">Screenshots</a> ·
+  <a href="#quick-start">How to install</a> ·
+  <a href="docs/ADAPT.md">Adapt to your TV</a> ·
+  <a href="docs/HOW-IT-WORKS.md">How it works</a> ·
+  <a href="docs/FAQ.md">FAQ</a>
+</p>
+
 ---
 
 > Cover Flow as a TV home screen. A single custom `View` that puts your apps on a

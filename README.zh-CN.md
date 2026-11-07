@@ -12,15 +12,21 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="promo/tv-home-promo.mp4">看效果</a> ·
+  <a href="screenshots/">截图</a> ·
+  <a href="#三步跑起来">如何安装</a> ·
+  <a href="docs/ADAPT.md">适配你的电视</a> ·
+  <a href="docs/HOW-IT-WORKS.md">实现原理</a> ·
+  <a href="docs/FAQ.md">常见问题</a>
+</p>
+
 ---
 
-> 把电视首页做成 Cover Flow。一个自定义 View 画完所有东西：3D 卡片、烘死的阴影、
-> 不会互相叠色的落地倒影、深浅两套主题、从系统读取的真实应用名。没有 WebView、
-> 没有第三方库、不需要 root，装上 180 KB。
+> 把电视首页做成 Cover Flow。一个自定义 View 画完所有东西：3D 卡片、烘死的阴影、不会互相叠色的落地倒影、深浅两套主题、从系统读取的真实应用名。没有 WebView、没有第三方库、不需要 root，装上 180 KB。
 >
-> Cover Flow as a TV home screen. A single custom `View` that puts your apps on a
-> mirror-black floor — 3D tiles, baked shadows, reflections that never stack colour,
-> light and dark, real app names. No WebView, no libraries, no root.
+> Cover Flow as a TV home screen. A single custom `View` that puts your apps on a mirror-black floor — 3D tiles, baked shadows, reflections that never stack colour, light and dark, real app names. No WebView, no libraries, no root.
 
 ![license](https://img.shields.io/badge/license-MIT-22c55e?style=flat&labelColor=2f353d)
 ![type](https://img.shields.io/badge/type-android%20launcher-8b93a1?style=flat&labelColor=2f353d)
@@ -42,21 +48,18 @@
 | :---: | :---: |
 | <img src="screenshots/before-stock.jpg" width="440"> | <img src="screenshots/after-light.jpg" width="440"> |
 
-能在低端电视 SoC 上跑顺，是因为所有昂贵的东西 —— 卡片阴影、落地倒影、图标 ——
-都在启动时**一次性烘焙成位图**。每帧只做一件事：把预制贴图按投影矩阵贴到四个角上。
+能在低端电视 SoC 上跑顺，是因为所有昂贵的东西 —— 卡片阴影、落地倒影、图标 —— 都在启动时**一次性烘焙成位图**。每帧只做一件事：把预制贴图按投影矩阵贴到四个角上。
 
 ---
 
 ## 你会得到什么
 
-- **Cover Flow 卡片轮播** —— 9 张卡片按 3D 透视排布，中间那张压住两侧邻居，
-  方向键切换带 420 ms 缓动
-- **玻璃地板倒影** —— 每张卡下方是自己模糊后的镜像。因为每张贴图都自带一块
-  **不透明的地板色**，更靠中间的卡片天然把外侧残留盖掉，倒影永远不会叠色
-- **深浅两套主题** —— 一键切换，重启后记住
-- **真实应用名** —— 从 `PackageManager` 读取，中文应用显示中文、英文显示英文，衬线渲染
-- **大号时钟** —— Roboto Black，直接读系统字体
-- **离线、免 root、可还原** —— 什么都不卸载
+- **Cover Flow 卡片轮播** —— 9 张卡片按 3D 透视排布，中间那张压住两侧邻居，方向键切换带 420 ms 缓动。
+- **玻璃地板倒影** —— 每张卡下方是自己模糊后的镜像。因为每张贴图都自带一块**不透明的地板色**，更靠中间的卡片天然把外侧残留盖掉，倒影永远不会叠色。
+- **深浅两套主题** —— 一键切换，重启后记住。
+- **真实应用名** —— 从 `PackageManager` 读取，中文应用显示中文、英文显示英文，衬线渲染。
+- **大号时钟** —— Roboto Black，直接读系统字体。
+- **离线、免 root、可还原** —— 什么都不卸载。
 
 <p align="center">
   <img src="screenshots/after-dark.jpg" width="720" alt="深色主题">
@@ -96,8 +99,7 @@ adb shell am start -n <homeApplicationId>/com.gathin.tvhome.MainActivity
 # 5 · 按遥控器 HOME 键 → 选 iPodTVStyle → 允许 / 始终
 ```
 
-如果它压根没出现在 HOME 选择器里，那就是白名单问题，
-看 **[docs/ADAPT.md](docs/ADAPT.md)**。
+如果它压根没出现在 HOME 选择器里，那就是白名单问题，看 **[docs/ADAPT.md](docs/ADAPT.md)**。
 
 ```bash
 # 想换回原厂桌面
@@ -123,10 +125,7 @@ adb uninstall <homeApplicationId>
 
 ## 原理
 
-一块 `Canvas` 上画 3D 透视四边形，摄像机参数来自这个设计的 CSS 版本，
-另外加了几处针对老旧电视 GPU 的妥协。改渲染逻辑前先看
-**[docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md)**：投影公式、烘焙流程、
-遮挡裁剪、帧预算都在里面。
+一块 `Canvas` 上画 3D 透视四边形，摄像机参数来自这个设计的 CSS 版本，另外加了几处针对老旧电视 GPU 的妥协。改渲染逻辑前先看 **[docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md)**：投影公式、烘焙流程、遮挡裁剪、帧预算都在里面。
 
 <p align="center">
   <img src="screenshots/header-closeup.jpg" width="640" alt="顶部图标">
@@ -142,7 +141,6 @@ adb uninstall <homeApplicationId>
 
 ## 许可
 
-MIT，见 [LICENSE](LICENSE)。截图里出现的应用名称与图标归各自所有者，
-**不在**这个许可范围内 —— 见 [NOTICE.md](NOTICE.md)。
+MIT，见 [LICENSE](LICENSE)。截图里出现的应用名称与图标归各自所有者，**不在**这个许可范围内 —— 见 [NOTICE.md](NOTICE.md)。
 
 <p align="center"><sub>English → <a href="README.md">README.md</a></sub></p>
