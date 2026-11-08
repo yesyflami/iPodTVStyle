@@ -9,7 +9,8 @@
 > 取决于这台机器的固件愿不愿意交出 HOME 角色**。上游清单主要是记录"能删什么"，不是"能换桌面"，
 > 因此下面把 457 个机型按备注里的线索分了三档：**✅ 已实测可换 · ❌ 明确不可换 · ⚠️ 未验证**。
 >
-> 你手上有机器并实测通过？欢迎提 PR 把状态改成 ✅。
+> 🛠 标记的那一行是**本项目的测试机**（作者自用，长期实测）。
+> 你手上有机器并实测通过？欢迎提 PR 把自己的机型加进来。
 
 ## 怎么用
 
@@ -37,7 +38,7 @@ adb shell cmd package resolve-activity -c android.intent.category.HOME
 
 | 状态 | 数量 |
 |---|---|
-| ✅ 可换 | 49 |
+| ✅ 可换 | 50 |
 | ❌ 不可换 | 6 |
 | ⚠️ 未验证 | 402 |
 
@@ -45,6 +46,7 @@ adb shell cmd package resolve-activity -c android.intent.category.HOME
 
 | 状态 | 机型 | 系统 | 说明 | 上游目录 |
 |---|---|---|---|---|
+| ✅ 可换 | 🛠 **Skyworth 7S77_A6M**（创维 SkyOS，`sky848_9s60`，本项目测试机） | Android 8.0（SkyOS） | 作者自用机，长期实测通过。白名单包名 `com.coocaa.tvhome`；1920×1080 / 240dpi；倒影、时钟、图标等全部功能在真机验证 | —（本项目实测，无上游目录） |
 | ✅ 可换 | Beko B43B880B (Arçelik, sinchon, MediaTek), Turkey | Android TV 11 | **已实测可装第三方桌面** · First Beko list, same Arçelik/MediaTek family as [grundig-kunyang](grundig-kunyang/): Anoki ACR, FAST channels, Beko Cha… | [`beko-b43b880b`](https://github.com/Gathin23/cleanyourtv/tree/main/examples/beko-b43b880b) |
 | ✅ 可换 | BYINTEK Love U4 projector, 1080P (Skyworth RG_HS352, HiSilicon Hi3751V350, 1 GB), Brazil | Android 9 | **已实测可装第三方桌面** · Zeasn ad/portal service (also hidden with root: it is persistent) and store, WPS Office, RuStore (reinstalled at boot if… | [`byintek-u4`](https://github.com/Gathin23/cleanyourtv/tree/main/examples/byintek-u4) |
 | ✅ 可换 | Cecotec VQU10065S 65" QLED (Vestel-built, shandao, MediaTek), Spain | Android TV 14 | **新桌面接管 HOME** · First Vestel list: Vestel reporter/logger, the "speed up" cleaner and SmartCenter (no UI, holds GET_TASKS + INTERNET, 75… | [`cecotec-shandao`](https://github.com/Gathin23/cleanyourtv/tree/main/examples/cecotec-shandao) |
