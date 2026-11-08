@@ -17,6 +17,7 @@
   <a href="screenshots/">Screenshots</a> ·
   <a href="#quick-start">How to install</a> ·
   <a href="docs/MODELS.md">Compatible TVs</a> ·
+  <a href="docs/INSTALL-PROMPT.md">Prompt for your agent</a> ·
   <a href="docs/ADAPT.md">Adapt to your TV</a> ·
   <a href="docs/HOW-IT-WORKS.md">How it works</a> ·
   <a href="docs/FAQ.md">FAQ</a>
@@ -88,31 +89,28 @@ warps prefabbed textures into projected quads.
 
 ## Quick start
 
-```bash
-# 1 · connect to the TV
-adb connect 192.168.1.50:5555
-adb devices
+You need a computer on the same network as the TV, and a coding agent that can run
+terminal commands — [Claude Code](https://claude.com/claude-code),
+[Codex](https://github.com/openai/codex), [Gemini CLI](https://github.com/google-gemini/gemini-cli).
 
-# 2 · write down the stock home activity FIRST, so you can always go back
-adb shell cmd package resolve-activity -c android.intent.category.HOME
+| Step | What to do |
+|---|---|
+| **1. On the TV** | Settings → About, tap **Build number** seven times, go back into **Developer options**, enable **USB debugging** and — if it exists — **Network debugging / ADB over network**. Note the TV's IP (Settings → Network). Menu names differ per vendor. |
+| **2. On the computer** | Clone the repo and open the folder in your agent (`git clone https://github.com/yesyflami/iPodTVStyle`), then hand it the block in [`docs/INSTALL-PROMPT.md`](docs/INSTALL-PROMPT.md). **One thing to edit: the TV's IP.** |
+| **3. Answer the agent** | Accept the "Allow debugging" prompt on the TV; tell the agent which apps should appear (nine are preset) and that you want a rollback point recorded. |
+| **4. Verify** | Let the agent probe the home package → build → install → set-as-home. Then check yourself: does HOME land on the new launcher, do the arrow keys feel right, and **did you get a restore command in writing**. |
 
-# 3 · set the home package your TV's firmware allows
-#     launcher/gradle.properties → homeApplicationId
+Cloning first matters: the agent then uses `tools/build.sh`, `tools/install.sh` and the
+procedure in [docs/ADAPT.md](docs/ADAPT.md) instead of improvising its own; the rollback
+record and the restore command live there.
 
-# 4 · build, install, launch
-cd launcher
-./gradlew assembleRelease
-adb install -r app/build/outputs/apk/release/app-release.apk
-adb shell am start -n <homeApplicationId>/com.gathin.tvhome.MainActivity
+Press **HOME** on the remote → pick iPodTVStyle → Always.
 
-# 5 · press HOME on the remote → pick iPodTVStyle → "Always"
-```
-
-If it does not show up in the HOME chooser, that is the allow-list problem described in
-**[docs/ADAPT.md](docs/ADAPT.md)**. It is almost always the package name.
+If it never appears in the HOME chooser, that is the allow-list problem — see
+**[docs/ADAPT.md](docs/ADAPT.md) §1**. It is almost always the package name.
 
 ```bash
-# back to the stock launcher
+# back to the stock launcher (fill in what step 2 recorded)
 adb shell cmd package set-home-activity <stock-home-package>/<stock-home-activity>
 adb uninstall <homeApplicationId>
 ```

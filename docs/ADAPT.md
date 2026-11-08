@@ -9,6 +9,14 @@
 
 ---
 
+## 0. 不想自己敲命令？
+
+如果你有编程助手（Claude Code / Codex / Gemini CLI / Cursor），
+直接把 **[INSTALL-PROMPT.md](INSTALL-PROMPT.md)** 里那段贴给它，改一下电视 IP 就行。
+下面这份是给想自己动手、或者要排查问题的人看的。
+
+---
+
 ## 0. 原理先说清楚（30 秒）
 
 Android TV 的"桌面"就是一个声明了 `android.intent.category.HOME` 的普通 app。

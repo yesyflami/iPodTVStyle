@@ -17,6 +17,7 @@
   <a href="screenshots/">看效果 / 截图</a> ·
   <a href="#三步跑起来">如何安装</a> ·
   <a href="docs/MODELS.md">机型清单</a> ·
+  <a href="docs/INSTALL-PROMPT.md">复制给助手</a> ·
   <a href="docs/ADAPT.md">适配你的电视</a> ·
   <a href="docs/HOW-IT-WORKS.md">实现原理</a> ·
   <a href="docs/FAQ.md">常见问题</a>
@@ -76,32 +77,28 @@
 
 ---
 
-## 三步跑起来
+## 快速开始
+
+准备一台与电视连在同一局域网的电脑，以及一个能跑终端命令的编程助手，例如
+[Claude Code](https://claude.com/claude-code)、[Codex](https://github.com/openai/codex) 或
+[Gemini CLI](https://github.com/google-gemini/gemini-cli)。
+
+| 步骤 | 操作 |
+|---|---|
+| **1. 电视端** | 打开「设置 → 关于」，在「版本号」上连按七次，返回后进入**开发者选项**，打开 **USB 调试**；如果另有**网络调试 / ADB over network**，也一并打开。顺手记下电视 IP（设置 → 网络）。菜单路径因机型而异。 |
+| **2. 电脑端** | 先克隆仓库并在助手里打开这个文件夹（`git clone https://github.com/yesyflami/iPodTVStyle`），再把 [`docs/INSTALL-PROMPT.md`](docs/INSTALL-PROMPT.md) 里的那段指令交给助手，**只需要改一处：电视 IP**。 |
+| **3. 确认需求** | 电视上弹出「允许调试」时点允许；告诉助手你要哪几个应用进轮播（默认给了 9 个）、以及是否保留原厂桌面的还原点。 |
+| **4. 检查结果** | 让助手按提示完成探测包名 → 编译 → 安装 → 设为默认桌面。然后自己验收：按 HOME 是否进新桌面、方向键是否顺、**还原命令是否已经交到你手上**。 |
+
+先克隆仓库的意义在于：助手会直接使用仓库里的 `tools/build.sh`、`tools/install.sh` 和
+[docs/ADAPT.md](docs/ADAPT.md) 的流程，不会自己另写一套；还原点的记录方式和还原命令都在其中。
+
+装完按遥控器 **HOME 键** → 选 iPodTVStyle → 允许 / 始终。
+
+如果它压根没出现在 HOME 选择器里，那是白名单问题，看 **[docs/ADAPT.md](docs/ADAPT.md) 第 1 节**。
 
 ```bash
-# 1 · 连电视
-adb connect 192.168.1.50:5555
-adb devices
-
-# 2 · 先记下原厂桌面是谁，出问题随时能回去
-adb shell cmd package resolve-activity -c android.intent.category.HOME
-
-# 3 · 填你电视白名单认的包名
-#     launcher/gradle.properties → homeApplicationId
-
-# 4 · 编译、安装、启动
-cd launcher
-./gradlew assembleRelease
-adb install -r app/build/outputs/apk/release/app-release.apk
-adb shell am start -n <homeApplicationId>/com.gathin.tvhome.MainActivity
-
-# 5 · 按遥控器 HOME 键 → 选 iPodTVStyle → 允许 / 始终
-```
-
-如果它压根没出现在 HOME 选择器里，那就是白名单问题，看 **[docs/ADAPT.md](docs/ADAPT.md)**。
-
-```bash
-# 想换回原厂桌面
+# 想换回原厂桌面（把第 2 步记下的东西填进来）
 adb shell cmd package set-home-activity <原桌面包名>/<原桌面Activity>
 adb uninstall <homeApplicationId>
 ```
