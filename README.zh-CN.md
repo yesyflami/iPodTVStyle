@@ -15,7 +15,7 @@
 <p align="center">
   <a href="README.md">English</a> ·
   <a href="screenshots/">看效果 / 截图</a> ·
-  <a href="#三步跑起来">如何安装</a> ·
+  <a href="#快速开始">如何安装</a> ·
   <a href="docs/MODELS.md">机型清单</a> ·
   <a href="docs/INSTALL-PROMPT.md">复制给助手</a> ·
   <a href="docs/ADAPT.md">适配你的电视</a> ·
