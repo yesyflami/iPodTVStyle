@@ -16,6 +16,7 @@
   <a href="README.md">English</a> ·
   <a href="screenshots/">看效果 / 截图</a> ·
   <a href="#三步跑起来">如何安装</a> ·
+  <a href="docs/MODELS.md">机型清单</a> ·
   <a href="docs/ADAPT.md">适配你的电视</a> ·
   <a href="docs/HOW-IT-WORKS.md">实现原理</a> ·
   <a href="docs/FAQ.md">常见问题</a>
@@ -69,7 +70,7 @@
 
 | | |
 |---|---|
-| 电视 | Android TV / Google TV，**Android 8.0（API 26）** 及以上 |
+| 电视 | Android TV / Google TV，**Android 8.0（API 26）** 及以上 —— 先在 [457 个机型的清单](docs/MODELS.md) 里查你这台 |
 | ADB | 已开启网络调试（设置 → 开发者选项） |
 | 构建 | JDK 17 + Android SDK 34，或直接用 Android Studio 打开 `launcher/` |
 

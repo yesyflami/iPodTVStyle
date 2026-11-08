@@ -16,6 +16,7 @@
   <a href="README.zh-CN.md">简体中文</a> ·
   <a href="screenshots/">Screenshots</a> ·
   <a href="#quick-start">How to install</a> ·
+  <a href="docs/MODELS.md">Compatible TVs</a> ·
   <a href="docs/ADAPT.md">Adapt to your TV</a> ·
   <a href="docs/HOW-IT-WORKS.md">How it works</a> ·
   <a href="docs/FAQ.md">FAQ</a>
@@ -79,7 +80,7 @@ warps prefabbed textures into projected quads.
 
 | | |
 |---|---|
-| TV | Android TV / Google TV, **Android 8.0 (API 26)** or newer |
+| TV | Android TV / Google TV, **Android 8.0 (API 26)** or newer — see the [457-model list](docs/MODELS.md) |
 | ADB | enabled over Wi-Fi (Developer options → Network debugging) |
 | Build | JDK 17 + Android SDK 34, or just open `launcher/` in Android Studio |
 
