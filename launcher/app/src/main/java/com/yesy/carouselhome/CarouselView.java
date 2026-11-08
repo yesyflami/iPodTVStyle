@@ -2,8 +2,6 @@ package com.gathin.tvhome;
 
 import android.animation.ValueAnimator;
 import android.content.Context;
-import android.media.AudioAttributes;
-import android.media.SoundPool;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
@@ -46,9 +44,6 @@ public final class CarouselView extends View {
     private static final float RAIL_Y = DESIGN_H * 0.43f;
     private static final float PERSPECTIVE = 1180f;
     private static final long ANIMATION_MS = 420L;
-    /** One tick per card. Two voices is plenty: a fast scroll must not stack into noise. */
-    private static final int SNAP_VOICES = 2;
-    private static final float SNAP_VOLUME = .5f;
     private static final float[] X_FRACTIONS = {0f, .16f, .242f, .312f, .372f, .418f};
     private static final float[] Y_OFFSETS = {0f, 2f, 4f, 7f, 7f, 8f};
     private static final float[] Z_OFFSETS = {-155f, -47f, -36f, -25f, -14f, -8f};
@@ -108,9 +103,6 @@ public final class CarouselView extends View {
     private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.US);
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("EEEE, MMM d, yyyy", Locale.US);
     private final SharedPreferences preferences;
-    private SoundPool snapPool;
-    private int snapId;
-    private boolean snapReady;
     private final Typeface clockFace = loadFace("/system/fonts/Roboto-Black.ttf", "sans-serif-black");
     private final Typeface dateFace = loadFace("/system/fonts/Roboto-Medium.ttf", "sans-serif-medium");
     private final Typeface nameFace = loadNameFace();
@@ -140,15 +132,6 @@ public final class CarouselView extends View {
         dark = preferences.getBoolean("dark", false);
         composeCards();
         bakeGear();
-        snapPool = new SoundPool.Builder()
-                .setMaxStreams(SNAP_VOICES)
-                .setAudioAttributes(new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build())
-                .build();
-        snapPool.setOnLoadCompleteListener((pool, id, status) -> snapReady = status == 0);
-        snapId = snapPool.load(context, R.raw.card_snap, 1);
     }
 
     /** Use the name the app itself ships with: Chinese stays Chinese, English stays English. */
@@ -348,11 +331,6 @@ public final class CarouselView extends View {
 
     @Override protected void onDetachedFromWindow() {
         removeCallbacks(clockTick);
-        if (snapPool != null) {
-            snapPool.release();
-            snapPool = null;
-            snapReady = false;
-        }
         super.onDetachedFromWindow();
     }
 
@@ -792,7 +770,6 @@ public final class CarouselView extends View {
         }
         final float start = direction;
         selected = wrap(selected + direction);
-        playSnap();
         motion = start;
         lastAnimationDrawNanos = 0L;
         animator = ValueAnimator.ofFloat(start, 0f);
@@ -819,15 +796,6 @@ public final class CarouselView extends View {
             }
         });
         animator.start();
-    }
-
-    /**
-     * Fires once per committed step. Deliberately silent while the sound is still
-     * loading, and a no-op on a released pool, so it can never crash the launcher.
-     */
-    private void playSnap() {
-        if (snapPool == null || !snapReady) return;
-        snapPool.play(snapId, SNAP_VOLUME, SNAP_VOLUME, 1, 0, 1f);
     }
 
     private int wrap(int value) {
