@@ -1,15 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
-    <img src="assets/logo-light.png" width="200" alt="iPodTVStyle">
-  </picture>
-</p>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/wordmark-dark.png">
-    <img src="assets/wordmark-light.png" width="460" alt="iPodTVStyle">
-  </picture>
+  <img src="assets/lockup.png" width="460" height="286" alt="iPodTVStyle">
 </p>
 
 <p align="center">
