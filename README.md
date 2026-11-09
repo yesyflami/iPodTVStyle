@@ -111,8 +111,8 @@ right, left, right** on the remote to enter developer mode, then switch on debug
 
 Make sure the computer is on the **same Wi-Fi** as the TV.
 
-Send the repository address together with the block below to your agent. **The only thing
-to edit is the IP.** The agent clones the repo, builds, installs and sets it as the default
+Send the repository address together with the block below to your agent. It contains a
+single `___` — put your IP there and send the rest unchanged. The agent clones the repo, builds, installs and sets it as the default
 home screen; if the TV asks to allow debugging, confirm with the remote.
 
 ```text
@@ -123,13 +123,14 @@ TV IP: ___
 
 Steps:
 1. Clone the repository above and open the project locally
-2. adb connect ___  and confirm `adb devices` lists it as "device"
+2. Connect to the TV: adb connect the IP above, confirm `adb devices` lists it as "device"
 3. Follow docs/ADAPT.md in the repo exactly. Do not invent steps
 4. Before changing anything, record the stock launcher for later rollback:
    adb shell cmd package resolve-activity -c android.intent.category.HOME
 5. Work out this TV's HOME policy and tell me the conclusion before continuing
 6. Edit homeApplicationId in launcher/gradle.properties
-7. Run ./tools/build.sh, then ./tools/install.sh ___ to install and set as home
+7. Build and install: run ./tools/build.sh, then ./tools/install.sh with the IP
+   above, and set it as the default home screen
 8. Hand me the complete restore command at the end
 
 Rules:

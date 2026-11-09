@@ -112,19 +112,22 @@
 
 操作步骤：
 1. 克隆上面的仓库，并在本地打开这个项目
-2. adb connect ___ ，确认 adb devices 中显示为 device
+2. 连接电视：adb connect 上面填的 IP，确认 adb devices 中显示为 device
 3. 严格按仓库中的 docs/ADAPT.md 执行，不要自行发明步骤
 4. 动手之前，先记录原厂桌面，用于日后的还原：
    adb shell cmd package resolve-activity -c android.intent.category.HOME
 5. 判断这台电视的 HOME 策略，把结论告诉我以后再继续
 6. 修改 launcher/gradle.properties 中的 homeApplicationId
-7. 运行 ./tools/build.sh 编译，再用 ./tools/install.sh ___ 安装并设为默认桌面
+7. 编译并安装：运行 ./tools/build.sh，再用 ./tools/install.sh 传入上面那个 IP，
+   安装完成后设为默认桌面
 8. 最后把完整的还原命令交给我
 
 注意事项：
 - 不要卸载任何系统应用，不要 root，不要执行 adb kill-server
 - 若出现 INSTALL_FAILED_UPDATE_INCOMPATIBLE，立即停止并告知我，不要强行覆盖
 ```
+
+填好后第一行应该是 `电视 IP：192.168.1.50` 这样——**全文只有这一处需要改**，其余原样发送。
 
 安装完成后按遥控器 **HOME 键**，选择 iPodTVStyle，即可进入新桌面。
 
