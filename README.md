@@ -13,7 +13,6 @@
   <a href="screenshots/">Screenshots</a> ·
   <a href="#quick-start">How to install</a> ·
   <a href="docs/MODELS.md">Compatible TVs</a> ·
-  <a href="docs/INSTALL-PROMPT.md">Prompt for your agent</a> ·
   <a href="docs/ADAPT.md">Adapt to your TV</a> ·
   <a href="docs/HOW-IT-WORKS.md">How it works</a> ·
   <a href="docs/FAQ.md">FAQ</a>
@@ -85,28 +84,65 @@ warps prefabbed textures into projected quads.
 
 ## Quick start
 
-You need a computer on the same network as the TV, and a coding agent that can run
-terminal commands — [Claude Code](https://claude.com/claude-code),
-[Codex](https://github.com/openai/codex), [Gemini CLI](https://github.com/google-gemini/gemini-cli).
+A computer on the same network as the TV, plus a coding agent that can run terminal
+commands — [Claude Code](https://claude.com/claude-code),
+[Codex](https://github.com/openai/codex),
+[Gemini CLI](https://github.com/google-gemini/gemini-cli).
 
-| Step | What to do |
-|---|---|
-| **1. On the TV** | Settings → About, tap **Build number** seven times, go back into **Developer options**, enable **USB debugging** and — if it exists — **Network debugging / ADB over network**. Note the TV's IP (Settings → Network). Menu names differ per vendor. |
-| **2. On the computer** | Clone the repo and open the folder in your agent (`git clone https://github.com/yesyflami/iPodTVStyle`), then hand it the block in [`docs/INSTALL-PROMPT.md`](docs/INSTALL-PROMPT.md). **One thing to edit: the TV's IP.** |
-| **3. Answer the agent** | Accept the "Allow debugging" prompt on the TV; tell the agent which apps should appear (nine are preset) and that you want a rollback point recorded. |
-| **4. Verify** | Let the agent probe the home package → build → install → set-as-home. Then check yourself: does HOME land on the new launcher, do the arrow keys feel right, and **did you get a restore command in writing**. |
+### 1 · On the TV
 
-Cloning first matters: the agent then uses `tools/build.sh`, `tools/install.sh` and the
-procedure in [docs/ADAPT.md](docs/ADAPT.md) instead of improvising its own; the rollback
-record and the restore command live there.
+1. Enable **Developer options**: Settings → About, tap **Build number** seven times.
+2. Open **USB debugging**; if **Network debugging / ADB over network** also exists, turn it on.
+   Names and locations vary by vendor — walk the developer menu once.
 
-Press **HOME** on the remote → pick iPodTVStyle → Always.
+### 2 · On the computer
 
-If it never appears in the HOME chooser, that is the allow-list problem — see
-**[docs/ADAPT.md](docs/ADAPT.md) §1**. It is almost always the package name.
+1. **Write down the TV's model and IP**
+
+   - Model: Settings → About → Model / Device name (e.g. `7S77_A6M`)
+   - IP: Settings → Network → current Wi-Fi → IP address (e.g. `192.168.1.50`)
+
+2. **Clone the repo and open the folder in your agent**
+
+   ```bash
+   git clone https://github.com/yesyflami/iPodTVStyle
+   ```
+
+3. **Copy the block below, fill in the model and IP, send the whole thing**
+
+```text
+Replace my TV's home screen with iPodTVStyle using ADB.
+
+TV model: ___
+TV IP: ___
+
+Follow docs/ADAPT.md in this repo. Do not invent steps:
+1. adb connect ___  and confirm `adb devices` says "device"
+2. Record the stock launcher first (needed for rollback):
+   adb shell cmd package resolve-activity -c android.intent.category.HOME
+3. Work out this TV's HOME policy and tell me the conclusion before changing anything
+4. Edit homeApplicationId in launcher/gradle.properties
+5. ./tools/build.sh
+6. ./tools/install.sh ___
+7. Hand me the exact restore command at the end
+
+Rules: never uninstall system apps, never root, do not run adb kill-server.
+On INSTALL_FAILED_UPDATE_INCOMPATIBLE, stop and ask me instead of forcing it.
+```
+
+4. **Verify**
+
+   - Accept the "Allow debugging" prompt on the TV
+   - Press **HOME** → desktop picker → iPodTVStyle → **Always**
+   - Arrow keys feel smooth
+   - **You got the restore command**
+
+Not showing up in the HOME picker? That is the allow-list problem — see
+[docs/ADAPT.md](docs/ADAPT.md) §1.
+
+Restore the stock launcher:
 
 ```bash
-# back to the stock launcher (fill in what step 2 recorded)
 adb shell cmd package set-home-activity <stock-home-package>/<stock-home-activity>
 adb uninstall <homeApplicationId>
 ```

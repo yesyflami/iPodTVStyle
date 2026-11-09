@@ -12,7 +12,7 @@
 ## 0. 不想自己敲命令？
 
 如果你有编程助手（Claude Code / Codex / Gemini CLI / Cursor），
-直接把 **[INSTALL-PROMPT.md](INSTALL-PROMPT.md)** 里那段贴给它，改一下电视 IP 就行。
+直接用 [README 快速开始](../README.zh-CN.md#快速开始) 里那段可复制的指令，填上型号和 IP 发过去就行。
 下面这份是给想自己动手、或者要排查问题的人看的。
 
 ---
