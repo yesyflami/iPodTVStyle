@@ -1,15 +1,11 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
-    <img src="assets/logo-light.png" width="200" alt="iPodTVStyle">
-  </picture>
+  <img src="assets/logo-dark.png#gh-dark-mode-only" width="200" alt="iPodTVStyle">
+  <img src="assets/logo-light.png#gh-light-mode-only" width="200" alt="iPodTVStyle">
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/wordmark-dark.png">
-    <img src="assets/wordmark-light.png" width="460" alt="iPodTVStyle">
-  </picture>
+  <img src="assets/wordmark-dark.png#gh-dark-mode-only" width="460" alt="iPodTVStyle">
+  <img src="assets/wordmark-light.png#gh-light-mode-only" width="460" alt="iPodTVStyle">
 </p>
 
 <p align="center">
