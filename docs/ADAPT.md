@@ -192,7 +192,7 @@ adb uninstall <homeApplicationId>
 ```java
 private final AppItem[] apps = {
     new AppItem("夸克网盘",  "com.quark.yun.tv",       R.drawable.quark,    0xfff7f7f5, .54f),
-    new AppItem("HDMI2",    "com.coocaa.hdmi2",       R.drawable.hdmi2,    0xffe60012, .58f),
+    new AppItem("HDMI2",    "com.coocaa.hdmi2",       R.drawable.hdmi2,    0xffe60012, .58f, 1),
     ...
 };
 ```
@@ -203,6 +203,26 @@ private final AppItem[] apps = {
 | 包名 | 按确认键时要启动的 app；也用来查真实名字 |
 | `R.drawable.xxx` | 卡片上的 logo，放在 `res/drawable-nodpi/` |
 | 颜色 | 卡片底色（ARGB），尽量取 logo 的主色 |
+| 第 6 个参数 | **只有信号源卡片需要**：HDMI 序号，**0 基**（`0`=HDMI 1，`1`=HDMI 2，`2`=HDMI 3）。普通应用不写这个参数 |
+
+### 信号源（HDMI）卡片的特殊处理
+
+创维/酷开电视的 HDMI 切换不是启动某个 Activity，而是向系统 provider 发一次调用：
+
+```java
+Bundle args = new Bundle();
+args.putString("name", "HDMI");
+args.putInt("index", 1);                       // 0 基：1 = HDMI 2
+getContentResolver().call(
+        Uri.parse("content://com.skyworth.tv.sdk.provider/method"),
+        "METHOD_GOTO_SOURCE", null, args);
+```
+
+`index` 写错就会出现「卡片写着 HDMI 2，实际切到 HDMI 3」——这正是早期版本的一个真实 bug：
+当时靠一个独立的小 APK 转发，里面把 `index` 写死成了 `2`。
+
+现在这段逻辑收进了 launcher 自己的 `switchSource()`；provider 不存在时（非创维机型）
+会自动退回按包名启动，所以其它品牌不会崩。
 | 比例 | logo 占卡片宽度的比例，0.48–0.70 之间比较好看；logo 本身留白多的可以放大 |
 
 改完记得同步 `AndroidManifest.xml` 里的 `<queries>` 列表：

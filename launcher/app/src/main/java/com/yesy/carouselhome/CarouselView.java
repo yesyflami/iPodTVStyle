@@ -3,6 +3,8 @@ package com.gathin.tvhome;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
@@ -55,6 +57,11 @@ public final class CarouselView extends View {
     private static final class AppItem {
         String name;
         final String packageName;
+        /**
+         * Skyworth source index for HDMI tiles, 0-based (0 = HDMI 1, 1 = HDMI 2, …).
+         * -1 means "an ordinary app": launch it by package name instead.
+         */
+        final int sourceIndex;
         final int imageRes;
         final int color;
         final float logoWidth;
@@ -64,8 +71,14 @@ public final class CarouselView extends View {
         Bitmap reflectionDark;
 
         AppItem(String name, String packageName, int imageRes, int color, float logoWidth) {
+            this(name, packageName, imageRes, color, logoWidth, -1);
+        }
+
+        AppItem(String name, String packageName, int imageRes, int color, float logoWidth,
+                int sourceIndex) {
             this.name = name;
             this.packageName = packageName;
+            this.sourceIndex = sourceIndex;
             this.imageRes = imageRes;
             this.color = color;
             this.logoWidth = logoWidth;
@@ -74,7 +87,9 @@ public final class CarouselView extends View {
 
     private final AppItem[] apps = {
             new AppItem("Quark", "com.quark.yun.tv", R.drawable.quark, 0xfff7f7f5, .54f),
-            new AppItem("HDMI 2", "com.coocaa.hdmi2", R.drawable.hdmi2, 0xffe60012, .58f),
+            // index is 0-based on SkyOS: 0 = HDMI 1, 1 = HDMI 2. The old trampoline app
+            // sent 2 here, so the tile labelled HDMI 2 switched the set to HDMI 3.
+            new AppItem("HDMI 2", "com.coocaa.hdmi2", R.drawable.hdmi2, 0xffe60012, .58f, 1),
             new AppItem("Cloud TV", "com.xiaodianshi.tv.yst", R.drawable.cloudtv, 0xffff3d78, .55f),
             new AppItem("Spotify", "com.spotify.tv.android", R.drawable.spotify, 0xff171414, .70f),
             new AppItem("HappyCast", "com.hpplay.happyplay.aw", R.drawable.happycast, 0xff378cf8, .50f),
@@ -811,15 +826,35 @@ public final class CarouselView extends View {
         } else if (headerFocus == 2) {
             getContext().startActivity(new Intent(Settings.ACTION_WIFI_SETTINGS));
         } else {
+            AppItem app = apps[selected];
+            if (app.sourceIndex >= 0 && switchSource(app.sourceIndex)) return;
             Intent intent = getContext().getPackageManager()
-                    .getLeanbackLaunchIntentForPackage(apps[selected].packageName);
+                    .getLeanbackLaunchIntentForPackage(app.packageName);
             if (intent == null) {
-                intent = getContext().getPackageManager().getLaunchIntentForPackage(apps[selected].packageName);
+                intent = getContext().getPackageManager().getLaunchIntentForPackage(app.packageName);
             }
             if (intent != null) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
                 getContext().startActivity(intent);
             }
+        }
+    }
+
+    /**
+     * Asks SkyOS to bring up an HDMI input. Returns false when the provider is missing
+     * (any non-Skyworth TV), so the caller can fall back to launching a package.
+     */
+    private boolean switchSource(int index) {
+        try {
+            Bundle args = new Bundle();
+            args.putString("name", "HDMI");
+            args.putInt("index", index);
+            getContext().getContentResolver().call(
+                    Uri.parse("content://com.skyworth.tv.sdk.provider/method"),
+                    "METHOD_GOTO_SOURCE", null, args);
+            return true;
+        } catch (Exception missing) {
+            return false;
         }
     }
 
