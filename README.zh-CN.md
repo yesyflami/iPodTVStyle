@@ -74,66 +74,62 @@
 
 ## 快速开始
 
-一台与电视连在同一局域网的电脑，加一个能跑终端命令的编程助手：
-[Claude Code](https://claude.com/claude-code)、[Codex](https://github.com/openai/codex)、
-[Gemini CLI](https://github.com/google-gemini/gemini-cli) 都行。
+准备一台与电视连在同一局域网的电脑，以及一个能执行终端命令的编程助手
+（Claude Code、Codex、Gemini CLI 均可，下文以 Codex 为例）。
 
 ### 一、电视端
 
-1. 打开**开发者选项**：设置 → 关于，在「版本号」上连按**七次**。
-2. 进去打开 **USB 调试**；如果还有 **网络调试 / ADB over network**，一并打开。
-   菜单位置和叫法因机型而异，翻一遍开发者选项里的每一项基本都能找到。
+电视端需要完成两件事：**记下配对信息**，以及**打开 ADB 调试开关**。
+
+**1. 记下配对信息**
+
+用遥控器进入设置，找到「本机信息」一类的条目，记下其中的**电视型号**。
+再进入当前连接的 Wi-Fi，查看「网络信息」，记下**IP 地址**（形如 `192.168.1.50`）。
+
+这两项是后续让助手连接电视的依据。
+
+**2. 打开 ADB 调试开关**
+
+不同机型的开启方式略有差异。大多数电视可以在「版本号」上连按**七次**进入开发者模式；
+若无法确定，搜索「电视型号 + adb」通常能在社区找到对应方法。
+
+以创维电视为例：进入「本机信息」后，用遥控器依次按 **上上下下左右左右**，
+即可进入开发者模式，随后打开其中的调试开关。
 
 ### 二、电脑端
 
-1. **先记下电视的型号和 IP**
+确认电脑与电视连接在**同一个 Wi-Fi** 下。
 
-   - 型号：设置 → 关于 → 型号 / 设备名称（例如 `7S77_A6M`）
-   - IP：设置 → 网络 → 当前 Wi-Fi → IP 地址（形如 `192.168.1.50`）
-
-2. **克隆仓库，在助手里打开这个文件夹**
-
-   ```bash
-   git clone https://github.com/yesyflami/iPodTVStyle
-   ```
-
-3. **复制下面这段，把型号和 IP 填进去，整段发给助手**
+将项目地址连同下面这段指令一起发给助手，**只需替换其中的 IP 地址**——
+助手会自动克隆仓库、编译、安装并设为默认桌面。过程中电视若弹出「允许调试」，
+用遥控器确认即可。
 
 ```text
-帮我用 ADB 把电视换成 iPodTVStyle 桌面。
+请帮我把我的电视换成 iPodTVStyle 桌面。
 
-电视型号：___
+项目地址：https://github.com/yesyflami/iPodTVStyle
 电视 IP：___
 
-请按仓库 docs/ADAPT.md 执行，不要自己发明步骤：
-1. adb connect ___ ，确认 adb devices 状态是 device
-2. 先记录原厂桌面（还原要用）：
+操作步骤：
+1. 克隆上面的仓库，并在本地打开这个项目
+2. adb connect ___ ，确认 adb devices 中显示为 device
+3. 严格按仓库中的 docs/ADAPT.md 执行，不要自行发明步骤
+4. 动手之前，先记录原厂桌面，用于日后的还原：
    adb shell cmd package resolve-activity -c android.intent.category.HOME
-3. 判断这台机器的 HOME 策略，把结论告诉我再动手
-4. 改 launcher/gradle.properties 里的 homeApplicationId
-5. ./tools/build.sh
-6. ./tools/install.sh ___
-7. 最后把还原命令拼好给我
+5. 判断这台电视的 HOME 策略，把结论告诉我以后再继续
+6. 修改 launcher/gradle.properties 中的 homeApplicationId
+7. 运行 ./tools/build.sh 编译，再用 ./tools/install.sh ___ 安装并设为默认桌面
+8. 最后把完整的还原命令交给我
 
-约束：不要卸载系统应用、不要 root、不要 adb kill-server；
-遇到 INSTALL_FAILED_UPDATE_INCOMPATIBLE 立刻停下问我，不要强行覆盖。
+注意事项：
+- 不要卸载任何系统应用，不要 root，不要执行 adb kill-server
+- 若出现 INSTALL_FAILED_UPDATE_INCOMPATIBLE，立即停止并告知我，不要强行覆盖
 ```
 
-4. **验收**
+安装完成后按遥控器 **HOME 键**，选择 iPodTVStyle，即可进入新桌面。
 
-   - 电视上点「允许调试」
-   - 装完按 **HOME 键** → 桌面选择器 → 选 iPodTVStyle → **始终**
-   - 方向键滑动是否顺畅
-   - **助手有没有把还原命令交给你**
-
-没出现在 HOME 选择器里？那是白名单问题，看 [docs/ADAPT.md](docs/ADAPT.md) 第 1 节。
-
-还原回原厂桌面：
-
-```bash
-adb shell cmd package set-home-activity <原桌面包名>/<原桌面Activity>
-adb uninstall <homeApplicationId>
-```
+若它没有出现在桌面选择器中，说明该机型存在白名单限制，请查看
+[docs/ADAPT.md](docs/ADAPT.md) 第 1 节。
 
 ---
 

@@ -85,67 +85,62 @@ warps prefabbed textures into projected quads.
 ## Quick start
 
 A computer on the same network as the TV, plus a coding agent that can run terminal
-commands — [Claude Code](https://claude.com/claude-code),
-[Codex](https://github.com/openai/codex),
-[Gemini CLI](https://github.com/google-gemini/gemini-cli).
+commands — Claude Code, Codex or Gemini CLI (Codex is used in the examples below).
 
 ### 1 · On the TV
 
-1. Enable **Developer options**: Settings → About, tap **Build number** seven times.
-2. Open **USB debugging**; if **Network debugging / ADB over network** also exists, turn it on.
-   Names and locations vary by vendor — walk the developer menu once.
+Two things to do: **write down the pairing details**, then **enable ADB debugging**.
+
+**Write down the pairing details**
+
+Open Settings and find the "About this TV" entry; note the **model name**. Then open the
+connected Wi-Fi and check its **network details** for the **IP address** (e.g. `192.168.1.50`).
+
+These two are what lets the agent talk to your TV.
+
+**Enable ADB debugging**
+
+The exact route differs per model. Most TVs enter developer mode when you press the
+**build number seven times**; if that does not apply, search "<model> + adb" — the method
+is usually documented in a community post.
+
+On a Skyworth set, for example: open "About this TV" and press **up, up, down, down, left,
+right, left, right** on the remote to enter developer mode, then switch on debugging.
 
 ### 2 · On the computer
 
-1. **Write down the TV's model and IP**
+Make sure the computer is on the **same Wi-Fi** as the TV.
 
-   - Model: Settings → About → Model / Device name (e.g. `7S77_A6M`)
-   - IP: Settings → Network → current Wi-Fi → IP address (e.g. `192.168.1.50`)
-
-2. **Clone the repo and open the folder in your agent**
-
-   ```bash
-   git clone https://github.com/yesyflami/iPodTVStyle
-   ```
-
-3. **Copy the block below, fill in the model and IP, send the whole thing**
+Send the repository address together with the block below to your agent. **The only thing
+to edit is the IP.** The agent clones the repo, builds, installs and sets it as the default
+home screen; if the TV asks to allow debugging, confirm with the remote.
 
 ```text
-Replace my TV's home screen with iPodTVStyle using ADB.
+Please replace my TV's home screen with iPodTVStyle.
 
-TV model: ___
+Repository: https://github.com/yesyflami/iPodTVStyle
 TV IP: ___
 
-Follow docs/ADAPT.md in this repo. Do not invent steps:
-1. adb connect ___  and confirm `adb devices` says "device"
-2. Record the stock launcher first (needed for rollback):
+Steps:
+1. Clone the repository above and open the project locally
+2. adb connect ___  and confirm `adb devices` lists it as "device"
+3. Follow docs/ADAPT.md in the repo exactly. Do not invent steps
+4. Before changing anything, record the stock launcher for later rollback:
    adb shell cmd package resolve-activity -c android.intent.category.HOME
-3. Work out this TV's HOME policy and tell me the conclusion before changing anything
-4. Edit homeApplicationId in launcher/gradle.properties
-5. ./tools/build.sh
-6. ./tools/install.sh ___
-7. Hand me the exact restore command at the end
+5. Work out this TV's HOME policy and tell me the conclusion before continuing
+6. Edit homeApplicationId in launcher/gradle.properties
+7. Run ./tools/build.sh, then ./tools/install.sh ___ to install and set as home
+8. Hand me the complete restore command at the end
 
-Rules: never uninstall system apps, never root, do not run adb kill-server.
-On INSTALL_FAILED_UPDATE_INCOMPATIBLE, stop and ask me instead of forcing it.
+Rules:
+- Never uninstall system apps, never root, do not run adb kill-server
+- On INSTALL_FAILED_UPDATE_INCOMPATIBLE, stop and tell me instead of forcing it
 ```
 
-4. **Verify**
+When it finishes, press **HOME** on the remote and pick iPodTVStyle.
 
-   - Accept the "Allow debugging" prompt on the TV
-   - Press **HOME** → desktop picker → iPodTVStyle → **Always**
-   - Arrow keys feel smooth
-   - **You got the restore command**
-
-Not showing up in the HOME picker? That is the allow-list problem — see
-[docs/ADAPT.md](docs/ADAPT.md) §1.
-
-Restore the stock launcher:
-
-```bash
-adb shell cmd package set-home-activity <stock-home-package>/<stock-home-activity>
-adb uninstall <homeApplicationId>
-```
+If it never shows up in the desktop picker, that model has an allow-list restriction —
+see [docs/ADAPT.md](docs/ADAPT.md) §1.
 
 ---
 
