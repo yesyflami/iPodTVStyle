@@ -49,10 +49,10 @@
 
 ## 你会得到什么
 
-- **Cover Flow 卡片轮播** —— 9 张卡片按 3D 透视排布，中间那张压住两侧邻居，方向键切换带 420 ms 缓动。
+- **Cover Flow 卡片轮播** —— 最多 9 张卡片按 3D 透视排布，中间那张压住两侧邻居，方向键切换带 420 ms 缓动。
 - **玻璃地板倒影** —— 每张卡下方是自己模糊后的镜像。因为每张贴图都自带一块**不透明的地板色**，更靠中间的卡片天然把外侧残留盖掉，倒影永远不会叠色。
 - **深浅两套主题** —— 一键切换，重启后记住。
-- **真实应用名** —— 从 `PackageManager` 读取，中文应用显示中文、英文显示英文，衬线渲染。
+- **你自己的应用** —— 启动时从 `PackageManager` 读本机清单：先 leanback 应用，再普通应用；名字、图标都来自应用本身，卡片底色由图标主色采样得到。源码里没有"作者的应用名单"，包里也不再带第三方 logo。
 - **大号时钟** —— Roboto Black，直接读系统字体。
 - **离线、免 root、可还原** —— 什么都不卸载。
 
@@ -140,13 +140,14 @@
 
 | 想改什么 | 改哪里 |
 |---|---|
-| 轮播里的应用（名字、包名、图标、卡片底色、logo 大小） | `launcher/app/src/main/java/com/yesy/carouselhome/CarouselView.java` → `apps[]` |
+| 轮播里的应用 | 不用改 —— 启动时从 `PackageManager` 读 |
+| 想隐藏某个应用 | `CarouselView.java` → `HIDDEN_PACKAGES`（默认为空） |
 | 电视认的 HOME 包名 | `launcher/gradle.properties` → `homeApplicationId` |
 | 时钟字体、日期格式 | 同一文件 → `drawHeader()` |
 | 动画时长、倾斜角度、卡片间距 | 同一文件 → 顶部常量区 |
-| 应用名衬线子集 | `assets/app_name_serif.ttf` + `tools/make-font-subset.py` |
+| 应用名衬线字体 | `assets/app_name_serif.ttf` + `tools/make-font-subset.py`（缺字自动回落系统字体） |
 
-完整流程（含如何从自己的电视上抠应用图标）见 **[docs/ADAPT.md](docs/ADAPT.md)**。
+完整流程见 **[docs/ADAPT.md](docs/ADAPT.md)**。
 
 ---
 

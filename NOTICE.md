@@ -2,15 +2,15 @@
 
 ## Trademarks and app icons
 
-The screenshots and the `res/drawable-nodpi/` folder contain icons and names of
-third-party applications (Quark, Spotify, Mango TV, NetEase Music, Nintendo Switch,
-HappyCast, Xigua, Coocaa HDMI, and others). Those names and marks are the property of
-their respective owners and are used here **only to identify the apps on the author's own
-television**. They are not part of this project's licence.
+No third-party icon is distributed with this project any more. The launcher reads every
+tile — label, icon and colour — from the TV it is installed on, via `PackageManager`, so a
+build carries only the apps of the machine it runs on.
 
-If you redistribute a build, replace the icons in
-`launcher/app/src/main/res/drawable-nodpi/` with your own artwork, or drop the entries
-from the `apps[]` array in `CarouselView.java`.
+The screenshots still contain icons and names of third-party applications (Quark, Spotify,
+Mango TV, NetEase Music, HappyCast, Xigua, Coocaa HDMI, and others) because they are photos
+of the author's own television. Those names and marks are the property of their respective
+owners and appear here **only to show what the launcher looks like**. They are not part of
+this project's licence.
 
 The screenshots `screenshots/before-stock.jpg` is a photo of a stock Skyworth / Coocaa
 home screen, included for before/after comparison only.

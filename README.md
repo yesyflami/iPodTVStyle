@@ -22,11 +22,12 @@
 
 > Cover Flow as a TV home screen. A single custom `View` that puts your apps on a
 > mirror-black floor — 3D tiles, baked shadows, reflections that never stack colour,
-> light and dark, real app names. No WebView, no libraries, no root, 180 KB.
+> light and dark, the apps your own TV actually has. No WebView, no libraries, no root,
+> 180 KB.
 >
 > 把电视首页做成 Cover Flow。一个自定义 View 画完所有东西：3D 卡片、烘死的阴影、
-> 不会互相叠色的落地倒影、深浅两套主题、从系统读取的真实应用名。没有 WebView、
-> 没有第三方库、不需要 root，装上 180 KB。
+> 不会互相叠色的落地倒影、深浅两套主题、轮播里就是**你自己电视上的应用**。
+> 没有 WebView、没有第三方库、不需要 root，装上 180 KB。
 
 ![license](https://img.shields.io/badge/license-MIT-22c55e?style=flat&labelColor=2f353d)
 ![type](https://img.shields.io/badge/type-android%20launcher-8b93a1?style=flat&labelColor=2f353d)
@@ -55,14 +56,16 @@ warps prefabbed textures into projected quads.
 
 ## What you get
 
-- **Cover Flow carousel** — 9 tiles in 3D perspective, the centre tile overlaps its
-  neighbours, arrow keys slide with a 420 ms eased transition.
+- **Cover Flow carousel** — up to 9 tiles visible in 3D perspective, the centre tile
+  overlaps its neighbours, arrow keys slide with a 420 ms eased transition.
 - **Glossy floor reflections** — each tile sits on a blurred mirror image. Because every
   texture carries an opaque floor patch, the tile nearest the centre always erases the
   one behind it: reflections never stack colour.
+- **Your apps, not mine** — the ring is built at startup from `PackageManager`: leanback
+  entries first, then plain launcher ones, each with its own label, icon and a tile colour
+  sampled from that icon. Nothing is baked into the source, so the build carries no
+  third-party logo — and no list of somebody else's apps.
 - **Light / dark theme** — one tap, remembered across reboots.
-- **Real app names** — pulled from `PackageManager`, so Chinese apps show Chinese names
-  and English apps show English names, in a serif face.
 - **Live clock** — big and bold, Roboto Black from the system.
 - **Offline, no root, reversible.** Nothing is uninstalled.
 
@@ -149,14 +152,14 @@ see [docs/ADAPT.md](docs/ADAPT.md) §1.
 
 | What | Where |
 |---|---|
-| Apps in the carousel (name, package, icon, tile colour, logo size) | `launcher/app/src/main/java/com/yesy/carouselhome/CarouselView.java` → `apps[]` |
+| Apps in the carousel | nothing to edit — read from `PackageManager` at startup |
+| Hide an app from the ring | `CarouselView.java` → `HIDDEN_PACKAGES` (empty by default) |
 | Home package the TV expects | `launcher/gradle.properties` → `homeApplicationId` |
 | Clock font, date format | same Java file → `drawHeader()` |
 | Animation length, tilt, spacing | same Java file → constants block at the top |
-| Serif subset for app names | `assets/app_name_serif.ttf` + `tools/make-font-subset.py` |
+| Serif face for app names | `assets/app_name_serif.ttf` + `tools/make-font-subset.py` (missing glyphs fall back to the system face) |
 
-Full walkthrough — including pulling icons off your own TV — in
-**[docs/ADAPT.md](docs/ADAPT.md)**.
+Full walkthrough in **[docs/ADAPT.md](docs/ADAPT.md)**.
 
 ---
 

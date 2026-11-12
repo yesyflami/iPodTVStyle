@@ -41,6 +41,10 @@ public final class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         hideSystemUi();
-        if (carouselView != null) carouselView.requestFocus();
+        if (carouselView != null) {
+            // Apps can be installed from a store while we are behind another screen.
+            carouselView.refreshAppsIfChanged();
+            carouselView.requestFocus();
+        }
     }
 }

@@ -3,13 +3,14 @@ package com.gathin.tvhome;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
-import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -19,15 +20,18 @@ import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.animation.PathInterpolator;
 
-import com.yesy.carouselhome.R;
-
+import java.text.Collator;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 
 /** Lightweight, allocation-free Cover Flow renderer for low-memory Android TVs. */
@@ -54,50 +58,166 @@ public final class CarouselView extends View {
     /** Beyond this the slot is empty; the wrap happens while the tile is already invisible. */
     private static final float WRAP_DISTANCE = 5f;
 
+    /** Tiles baked before the first frame, and how wide the startup window is on a long list. */
+    private static final int EAGER_BAKE_LIMIT = 15;
+    private static final int STARTUP_WINDOW = 4;
+    private static final float LOGO_WIDTH = .54f;
+
+    /**
+     * Optional: packages this TV's owner does not want to see in the ring. Empty by default —
+     * the ring is whatever the TV reports, never a list baked into the source.
+     */
+    private static final String[] HIDDEN_PACKAGES = {};
+
+    /**
+     * One tile of the ring. Nothing here is authored by hand: the label, the package and the
+     * artwork are all read off the TV the launcher is running on.
+     */
     private static final class AppItem {
-        String name;
+        final String name;
         final String packageName;
         /**
          * Skyworth source index for HDMI tiles, 0-based (0 = HDMI 1, 1 = HDMI 2, …).
          * -1 means "an ordinary app": launch it by package name instead.
          */
         final int sourceIndex;
-        final int imageRes;
-        final int color;
-        final float logoWidth;
+        /** Resolved the first time the tile becomes the selected one: hasGlyph is not free. */
+        Typeface nameFace;
         Bitmap card;
-        Bitmap face;
         Bitmap reflection;
         Bitmap reflectionDark;
 
-        AppItem(String name, String packageName, int imageRes, int color, float logoWidth) {
-            this(name, packageName, imageRes, color, logoWidth, -1);
-        }
-
-        AppItem(String name, String packageName, int imageRes, int color, float logoWidth,
-                int sourceIndex) {
+        AppItem(String name, String packageName, int sourceIndex) {
             this.name = name;
             this.packageName = packageName;
             this.sourceIndex = sourceIndex;
-            this.imageRes = imageRes;
-            this.color = color;
-            this.logoWidth = logoWidth;
         }
     }
 
-    private final AppItem[] apps = {
-            new AppItem("Quark", "com.quark.yun.tv", R.drawable.quark, 0xfff7f7f5, .54f),
-            // index is 0-based on SkyOS: 0 = HDMI 1, 1 = HDMI 2. The old trampoline app
-            // sent 2 here, so the tile labelled HDMI 2 switched the set to HDMI 3.
-            new AppItem("HDMI 2", "com.coocaa.hdmi2", R.drawable.hdmi2, 0xffe60012, .58f, 1),
-            new AppItem("Cloud TV", "com.xiaodianshi.tv.yst", R.drawable.cloudtv, 0xffff3d78, .55f),
-            new AppItem("Spotify", "com.spotify.tv.android", R.drawable.spotify, 0xff171414, .70f),
-            new AppItem("HappyCast", "com.hpplay.happyplay.aw", R.drawable.happycast, 0xff378cf8, .50f),
-            new AppItem("App Store", "com.tianci.appstore", R.drawable.appstore, 0xfff7f7f5, .48f),
-            new AppItem("Fresh TV", "com.ixigua.android.tv.wasu", R.drawable.ixigua, 0xfff7f7f5, .48f),
-            new AppItem("Mango TV", "com.hunantv.market", R.drawable.mgtv, 0xffff5900, .50f),
-            new AppItem("NetEase Music", "com.netease.cloudmusic.tv", R.drawable.netease, 0xffe5002b, .48f)
-    };
+    private AppItem[] apps;
+    private int[] renderOrder;
+    private float[] renderPositions;
+    private String installedSignature;
+
+    /**
+     * Ask the TV which apps it has. LEANBACK entries come first (real TV apps), plain LAUNCHER
+     * ones after them, so a sideloaded phone app can never push a TV app off the ring. When a
+     * package exposes both, the leanback entry wins.
+     */
+    private AppItem[] discoverApps() {
+        PackageManager manager = getContext().getPackageManager();
+        String self = getContext().getPackageName();
+        ArrayList<AppItem> tvApps = new ArrayList<>();
+        ArrayList<AppItem> otherApps = new ArrayList<>();
+        collectApps(manager, self, Intent.CATEGORY_LEANBACK_LAUNCHER, tvApps);
+        collectApps(manager, self, Intent.CATEGORY_LAUNCHER, otherApps);
+
+        ArrayList<AppItem> merged = new ArrayList<>(tvApps.size() + otherApps.size());
+        HashSet<String> seen = new HashSet<>();
+        for (AppItem app : tvApps) if (seen.add(app.packageName)) merged.add(app);
+        for (AppItem app : otherApps) if (seen.add(app.packageName)) merged.add(app);
+        if (merged.isEmpty()) {
+            // Nothing queryable: keep the HOME button useful instead of an empty room.
+            merged.add(new AppItem(settingsLabel(manager), "com.android.settings", -1));
+        }
+        return merged.toArray(new AppItem[0]);
+    }
+
+    private void collectApps(PackageManager manager, String self, String category,
+                             ArrayList<AppItem> sink) {
+        Intent intent = new Intent(Intent.ACTION_MAIN).addCategory(category);
+        List<ResolveInfo> resolved;
+        try {
+            resolved = manager.queryIntentActivities(intent, 0);
+        } catch (RuntimeException ignored) {
+            return;
+        }
+        if (resolved == null) return;
+        for (ResolveInfo entry : resolved) {
+            ActivityInfo activity = entry.activityInfo;
+            if (activity == null || activity.packageName == null) continue;
+            if (activity.packageName.equals(self)) continue; // the launcher is not in its own ring
+            if (isHidden(activity.packageName)) continue;
+            if (!activity.enabled) continue;
+            CharSequence raw = entry.loadLabel(manager);
+            String label = raw == null ? "" : raw.toString().trim();
+            if (label.length() == 0) label = activity.packageName;
+            sink.add(new AppItem(label, activity.packageName,
+                    hdmiSourceIndex(activity.packageName)));
+        }
+        final Collator collator = Collator.getInstance(Locale.getDefault());
+        sink.sort((first, second) -> collator.compare(first.name, second.name));
+    }
+
+    /**
+     * SkyOS exposes each HDMI input as a trampoline package, <code>com.coocaa.hdmi1</code> …
+     * <code>com.coocaa.hdmi4</code>. The provider takes a 0-based index, so the number in the
+     * package name is the 1-based input: hdmi2 → index 1. Other TVs return -1 and the tile is
+     * launched like any other app.
+     */
+    private static int hdmiSourceIndex(String packageName) {
+        String prefix = "com.coocaa.hdmi";
+        if (!packageName.startsWith(prefix)) return -1;
+        String tail = packageName.substring(prefix.length());
+        if (tail.length() == 0 || tail.length() > 2) return -1;
+        for (int index = 0; index < tail.length(); index++) {
+            if (!Character.isDigit(tail.charAt(index))) return -1;
+        }
+        return Integer.parseInt(tail) - 1;
+    }
+
+    private static boolean isHidden(String packageName) {
+        for (String hidden : HIDDEN_PACKAGES) {
+            if (hidden.equals(packageName)) return true;
+        }
+        return false;
+    }
+
+    /** The face for the selected label, resolved once per app and then cached on the tile. */
+    private Typeface selectedFace() {
+        AppItem app = apps[selected];
+        if (app.nameFace == null) app.nameFace = nameFaceFor(app.name);
+        return app.nameFace;
+    }
+
+    private Typeface nameFaceFor(String label) {
+        if (covers(nameSerif, label)) return nameSerif;
+        // The bundled subset only carries the reference TV's glyphs: anything else falls back to
+        // the system face, so a Chinese app name never comes out as tofu boxes.
+        return Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD);
+    }
+
+    private static boolean covers(Typeface face, String text) {
+        if (face == null || text == null) return false;
+        Paint probe = new Paint();
+        probe.setTypeface(face);
+        for (int index = 0; index < text.length(); ) {
+            int codePoint = text.codePointAt(index);
+            index += Character.charCount(codePoint);
+            if (codePoint <= 0x20) continue;
+            if (!probe.hasGlyph(codePoint)) return false;
+        }
+        return true;
+    }
+
+    private static String settingsLabel(PackageManager manager) {
+        try {
+            ApplicationInfo info = manager.getApplicationInfo("com.android.settings", 0);
+            CharSequence label = manager.getApplicationLabel(info);
+            if (label != null && label.length() > 0) return label.toString().trim();
+        } catch (Exception ignored) {
+            // Settings is not exposed on this firmware: fall through to the plain word.
+        }
+        return "Settings";
+    }
+
+    private static String signatureOf(AppItem[] items) {
+        StringBuilder builder = new StringBuilder();
+        for (AppItem app : items) {
+            builder.append(app.packageName).append('\u0001').append(app.name).append('\n');
+        }
+        return builder.toString();
+    }
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
@@ -113,14 +233,12 @@ public final class CarouselView extends View {
     private final float[] reflectionSource = {0, 0, REFL_W, 0, REFL_W, REFL_H, 0, REFL_H};
     private final float[] destination = new float[8];
     private final float[] occluder = new float[8];
-    private final int[] renderOrder = new int[apps.length];
-    private final float[] renderPositions = new float[apps.length];
     private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.US);
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("EEEE, MMM d, yyyy", Locale.US);
     private final SharedPreferences preferences;
     private final Typeface clockFace = loadFace("/system/fonts/Roboto-Black.ttf", "sans-serif-black");
     private final Typeface dateFace = loadFace("/system/fonts/Roboto-Medium.ttf", "sans-serif-medium");
-    private final Typeface nameFace = loadNameFace();
+    private Typeface nameSerif;
 
     private int selected = 0;
     private int headerFocus = -1;
@@ -145,77 +263,269 @@ public final class CarouselView extends View {
         strokePaint.setStrokeWidth(2f);
         preferences = context.getSharedPreferences("carousel-home", Context.MODE_PRIVATE);
         dark = preferences.getBoolean("dark", false);
-        composeCards();
+        // Loaded here rather than in a field initialiser: getContext() is still null at that
+        // point, which is why the bundled serif face used to silently fall back.
+        nameSerif = loadNameFace();
+        apps = discoverApps();
+        installedSignature = signatureOf(apps);
+        renderOrder = new int[apps.length];
+        renderPositions = new float[apps.length];
+        prepareCards();
         bakeGear();
     }
 
-    /** Use the name the app itself ships with: Chinese stays Chinese, English stays English. */
-    private void resolveLabels() {
-        PackageManager manager = getContext().getPackageManager();
-        for (AppItem app : apps) {
-            try {
-                ApplicationInfo info = manager.getApplicationInfo(app.packageName, 0);
-                CharSequence label = manager.getApplicationLabel(info);
-                if (label != null && label.length() > 0) {
-                    app.name = label.toString().trim();
-                }
-            } catch (Exception ignored) {
-                // Package missing or not queryable: keep the bundled fallback name.
-            }
+    /** Bake the tiles the ring needs now; a long app list is baked as it is browsed. */
+    private void prepareCards() {
+        if (apps.length <= EAGER_BAKE_LIMIT) {
+            for (AppItem app : apps) ensureCard(app);
+            return;
+        }
+        for (int offset = -STARTUP_WINDOW; offset <= STARTUP_WINDOW; offset++) {
+            ensureCard(apps[wrap(selected + offset)]);
         }
     }
 
-    private void composeCards() {
-        resolveLabels();
-        for (AppItem app : apps) {
-            Bitmap sourceBitmap = BitmapFactory.decodeResource(getResources(), app.imageRes);
-            Bitmap face = Bitmap.createBitmap(CARD, CARD, Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(face);
-            Path roundedCard = new Path();
-            roundedCard.addRoundRect(new RectF(0f, 0f, CARD, CARD), 7f, 7f, Path.Direction.CW);
-            canvas.clipPath(roundedCard);
-            canvas.drawColor(app.color);
-            float maxWidth = CARD * app.logoWidth;
+    private void ensureCard(AppItem app) {
+        if (app.card != null) return;
+        PackageManager manager = getContext().getPackageManager();
+        Bitmap icon = renderIcon(manager, app.packageName);
+        IconStats stats = analyze(icon);
+        bakeCard(app, icon, stats.color, stats.fullBleed);
+    }
+
+    /** Rasterise the app's own icon at card resolution, keeping its proportions. */
+    private static Bitmap renderIcon(PackageManager manager, String packageName) {
+        Bitmap bitmap = Bitmap.createBitmap(CARD, CARD, Bitmap.Config.ARGB_8888);
+        try {
+            Drawable drawable = manager.getApplicationIcon(packageName);
+            int width = drawable.getIntrinsicWidth();
+            int height = drawable.getIntrinsicHeight();
+            if (width <= 0 || height <= 0) {
+                width = CARD;
+                height = CARD;
+            }
+            // Stretching a logo reads as a bug; leaving the plate visible reads as a design.
+            float scale = Math.min(CARD / (float) width, CARD / (float) height);
+            int drawnWidth = Math.max(1, Math.round(width * scale));
+            int drawnHeight = Math.max(1, Math.round(height * scale));
+            int left = (CARD - drawnWidth) / 2;
+            int top = (CARD - drawnHeight) / 2;
+            drawable.setBounds(left, top, left + drawnWidth, top + drawnHeight);
+            drawable.draw(new Canvas(bitmap));
+            return bitmap;
+        } catch (Exception ignored) {
+            // Unreadable icon (broken package, missing resource): the label stands in for it.
+            bitmap.recycle();
+            return null;
+        }
+    }
+
+    /** What one bake needs to know about an icon, measured in a single pass over its pixels. */
+    private static final class IconStats {
+        int color;
+        boolean fullBleed;
+    }
+
+    /**
+     * Plate colour and icon shape, both read from the app's own artwork instead of the
+     * reference screenshot's. A mostly-white icon, a dark glyph or a logo with transparent
+     * margins all land on a plate that keeps the logo visible.
+     */
+    private static IconStats analyze(Bitmap icon) {
+        IconStats stats = new IconStats();
+        if (icon == null) {
+            stats.color = 0xff111111; // dark plate so the fallback label reads
+            return stats;
+        }
+        int[] pixels = new int[CARD * CARD];
+        icon.getPixels(pixels, 0, CARD, 0, 0, CARD, CARD);
+        int[] counts = new int[4096];
+        int[] reds = new int[4096];
+        int[] greens = new int[4096];
+        int[] blues = new int[4096];
+        int minX = CARD;
+        int minY = CARD;
+        int maxX = -1;
+        int maxY = -1;
+        long glyphLuma = 0;
+        int glyphPixels = 0;
+        for (int y = 0; y < CARD; y++) {
+            int row = y * CARD;
+            for (int x = 0; x < CARD; x++) {
+                int argb = pixels[row + x];
+                int alpha = argb >>> 24;
+                if (alpha < 24) continue;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+                if (alpha < 200) continue; // colour statistics only from solid pixels
+                int red = (argb >> 16) & 0xff;
+                int green = (argb >> 8) & 0xff;
+                int blue = argb & 0xff;
+                int bucket = ((red >> 4) << 8) | ((green >> 4) << 4) | (blue >> 4);
+                counts[bucket]++;
+                reds[bucket] += red;
+                greens[bucket] += green;
+                blues[bucket] += blue;
+                glyphLuma += luma(argb);
+                glyphPixels++;
+            }
+        }
+        // An icon that fills its canvas replaces the plate instead of sitting on it.
+        stats.fullBleed = maxX >= 0
+                && maxX - minX + 1 >= CARD * .96f && maxY - minY + 1 >= CARD * .96f;
+
+        int best = -1;
+        int bestScore = 0;
+        for (int bucket = 0; bucket < 4096; bucket++) {
+            int count = counts[bucket];
+            if (count == 0) continue;
+            int red = reds[bucket] / count;
+            int green = greens[bucket] / count;
+            int blue = blues[bucket] / count;
+            int max = Math.max(red, Math.max(green, blue));
+            int min = Math.min(red, Math.min(green, blue));
+            // Cover and vividness both matter: a mostly-neutral icon should still resolve to a
+            // plate the logo can sit on, not to plain white.
+            int score = count * (max - min + 40);
+            if (score > bestScore) {
+                bestScore = score;
+                best = bucket;
+            }
+        }
+        int plate = 0xfff7f7f5;
+        if (best >= 0) {
+            int count = counts[best];
+            int red = reds[best] / count;
+            int green = greens[best] / count;
+            int blue = blues[best] / count;
+            if (red <= 244 || green <= 244 || blue <= 244) {
+                plate = 0xff000000 | (red << 16) | (green << 8) | blue;
+            }
+        }
+        if (glyphPixels > 0) {
+            int glyph = (int) (glyphLuma / glyphPixels);
+            // The logo must not disappear into its own plate: a white-line logo on a plate
+            // sampled from that same white line would otherwise be invisible.
+            if (Math.abs(luma(plate) - glyph) < 60) {
+                plate = glyph > 140 ? 0xff1c1c1e : 0xfff7f7f5;
+            }
+        }
+        stats.color = plate;
+        return stats;
+    }
+
+    private static int luma(int color) {
+        int red = (color >> 16) & 0xff;
+        int green = (color >> 8) & 0xff;
+        int blue = color & 0xff;
+        return (red * 299 + green * 587 + blue * 114) / 1000;
+    }
+
+    /** Bake one tile: plate, logo, gloss, shadow, and the two floor reflections. */
+    private void bakeCard(AppItem app, Bitmap icon, int color, boolean fullBleed) {
+        Bitmap face = Bitmap.createBitmap(CARD, CARD, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(face);
+        Path roundedCard = new Path();
+        roundedCard.addRoundRect(new RectF(0f, 0f, CARD, CARD), 7f, 7f, Path.Direction.CW);
+        canvas.clipPath(roundedCard);
+        canvas.drawColor(color);
+        Paint bakePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        if (icon == null) {
+            drawFallbackLabel(canvas, app);
+        } else if (fullBleed) {
+            // The icon already fills the card, so it replaces the plate rather than sitting on it.
+            canvas.drawBitmap(icon, 0f, 0f, bakePaint);
+        } else {
+            float maxWidth = CARD * LOGO_WIDTH;
             float maxHeight = CARD * .68f;
-            float scale = Math.min(maxWidth / sourceBitmap.getWidth(), maxHeight / sourceBitmap.getHeight());
-            float width = sourceBitmap.getWidth() * scale;
-            float height = sourceBitmap.getHeight() * scale;
+            float scale = Math.min(maxWidth / icon.getWidth(), maxHeight / icon.getHeight());
+            float width = icon.getWidth() * scale;
+            float height = icon.getHeight() * scale;
             RectF target = new RectF((CARD - width) / 2f, (CARD - height) / 2f,
                     (CARD + width) / 2f, (CARD + height) / 2f);
-            paint.setAlpha(255);
-            canvas.drawBitmap(sourceBitmap, null, target, paint);
-            sourceBitmap.recycle();
-
-            paint.setShader(new LinearGradient(0f, 0f, CARD, CARD,
-                    new int[] {0x22ffffff, 0x00ffffff, 0x14000000},
-                    new float[] {0f, .52f, 1f}, Shader.TileMode.CLAMP));
-            canvas.drawRect(0f, 0f, CARD, CARD, paint);
-            paint.setShader(null);
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(1f);
-            paint.setColor(0x18000000);
-            canvas.drawRoundRect(new RectF(.5f, .5f, CARD - .5f, CARD - .5f), 7f, 7f, paint);
-            paint.setStyle(Paint.Style.FILL);
-
-            Bitmap card = Bitmap.createBitmap(TEXTURE, TEXTURE, Bitmap.Config.ARGB_8888);
-            Canvas textureCanvas = new Canvas(card);
-            Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
-            shadow.setColor(app.color);
-            shadow.setShadowLayer(22f, 0f, 13f, 0x42000000);
-            RectF faceBounds = new RectF(TEXTURE_PAD, TEXTURE_PAD,
-                    TEXTURE_PAD + CARD, TEXTURE_PAD + CARD);
-            textureCanvas.drawRoundRect(faceBounds, 7f, 7f, shadow);
-            shadow.clearShadowLayer();
-            paint.setAlpha(255);
-            textureCanvas.drawBitmap(face, TEXTURE_PAD, TEXTURE_PAD, paint);
-            app.card = card;
-            app.face = face;
-
-            // The floor patch is baked into the texture: an opaque background inside the quad,
-            // so painting the reflection also erases whatever tile was painted before it.
-            app.reflection = bakeReflection(face, 0xfffdfdfd);
-            app.reflectionDark = bakeReflection(face, Color.BLACK);
+            canvas.drawBitmap(icon, null, target, bakePaint);
         }
+
+        bakePaint.setShader(new LinearGradient(0f, 0f, CARD, CARD,
+                new int[] {0x22ffffff, 0x00ffffff, 0x14000000},
+                new float[] {0f, .52f, 1f}, Shader.TileMode.CLAMP));
+        canvas.drawRect(0f, 0f, CARD, CARD, bakePaint);
+        bakePaint.setShader(null);
+        bakePaint.setStyle(Paint.Style.STROKE);
+        bakePaint.setStrokeWidth(1f);
+        bakePaint.setColor(0x18000000);
+        canvas.drawRoundRect(new RectF(.5f, .5f, CARD - .5f, CARD - .5f), 7f, 7f, bakePaint);
+        bakePaint.setStyle(Paint.Style.FILL);
+
+        Bitmap card = Bitmap.createBitmap(TEXTURE, TEXTURE, Bitmap.Config.ARGB_8888);
+        Canvas textureCanvas = new Canvas(card);
+        Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
+        shadow.setColor(color);
+        shadow.setShadowLayer(22f, 0f, 13f, 0x42000000);
+        RectF faceBounds = new RectF(TEXTURE_PAD, TEXTURE_PAD,
+                TEXTURE_PAD + CARD, TEXTURE_PAD + CARD);
+        textureCanvas.drawRoundRect(faceBounds, 7f, 7f, shadow);
+        shadow.clearShadowLayer();
+        bakePaint.setAlpha(255);
+        textureCanvas.drawBitmap(face, TEXTURE_PAD, TEXTURE_PAD, bakePaint);
+
+        // The floor patch is baked into the texture: an opaque background inside the quad,
+        // so painting the reflection also erases whatever tile was painted before it.
+        app.reflection = bakeReflection(face, 0xfffdfdfd);
+        app.reflectionDark = bakeReflection(face, Color.BLACK);
+        app.card = card;
+        // The face only existed to seed the textures: dropping it keeps memory flat, which
+        // matters once the ring is as long as the TV's app list.
+        face.recycle();
+        if (icon != null) icon.recycle();
+        paint.setAlpha(255);
+        paint.setShader(null);
+    }
+
+    /** No readable icon: the label still gives the tile something to say. */
+    private void drawFallbackLabel(Canvas canvas, AppItem app) {
+        if (app.nameFace == null) app.nameFace = nameFaceFor(app.name);
+        Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
+        label.setColor(0xfffdfdfd);
+        label.setTypeface(app.nameFace);
+        label.setTextAlign(Paint.Align.CENTER);
+        float size = 56f;
+        label.setTextSize(size);
+        while (size > 20f && label.measureText(app.name) > CARD * .78f) {
+            size -= 2f;
+            label.setTextSize(size);
+        }
+        canvas.drawText(app.name, CARD / 2f, CARD / 2f + size * .35f, label);
+    }
+
+    private void recycleCards() {
+        for (AppItem app : apps) {
+            if (app.card != null) app.card.recycle();
+            if (app.reflection != null) app.reflection.recycle();
+            if (app.reflectionDark != null) app.reflectionDark.recycle();
+            app.card = null;
+            app.reflection = null;
+            app.reflectionDark = null;
+        }
+    }
+
+    /** Apps can be installed or removed while we are off screen: rebuild only when they were. */
+    public void refreshAppsIfChanged() {
+        AppItem[] found = discoverApps();
+        String signature = signatureOf(found);
+        if (signature.equals(installedSignature)) return;
+        recycleCards();
+        apps = found;
+        installedSignature = signature;
+        renderOrder = new int[apps.length];
+        renderPositions = new float[apps.length];
+        selected = 0;
+        motion = 0f;
+        pendingDirection = 0;
+        prepareCards();
+        invalidate();
     }
 
     private Bitmap bakeReflection(Bitmap face, int background) {
@@ -340,6 +650,7 @@ public final class CarouselView extends View {
 
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        refreshAppsIfChanged();
         removeCallbacks(clockTick);
         postDelayed(clockTick, 30_000L);
     }
@@ -398,7 +709,7 @@ public final class CarouselView extends View {
         textPaint.setColor(foreground);
         textPaint.setTextSize(44f);
         textPaint.setFakeBoldText(false);
-        textPaint.setTypeface(nameFace);
+        textPaint.setTypeface(selectedFace());
         textPaint.setLetterSpacing(.015f);
         textPaint.setStyle(Paint.Style.FILL);
         textPaint.setStrokeWidth(0f);
@@ -421,6 +732,7 @@ public final class CarouselView extends View {
     private void drawCard(Canvas canvas, AppItem app, float position, float alpha) {
         float absolute = Math.abs(position);
         if (absolute > WRAP_DISTANCE + .05f || alpha <= .01f) return;
+        ensureCard(app);
 
         float half = HTML_CARD * .5f;
         float texturePad = HTML_CARD * TEXTURE_PAD / CARD;
@@ -833,9 +1145,15 @@ public final class CarouselView extends View {
             if (intent == null) {
                 intent = getContext().getPackageManager().getLaunchIntentForPackage(app.packageName);
             }
-            if (intent != null) {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+            if (intent == null) {
+                // Last resort for an entry that only exists as a settings shim.
+                intent = new Intent(Settings.ACTION_SETTINGS);
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+            try {
                 getContext().startActivity(intent);
+            } catch (RuntimeException ignored) {
+                // Nothing on this firmware can handle the entry: stay on the ring.
             }
         }
     }

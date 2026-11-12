@@ -4,10 +4,16 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+    <!-- Package visibility: the ring is built from whatever the TV reports here. Never list
+         individual packages — that was how the reference TV's apps leaked into everyone's build. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
         </intent>
         <intent>
             <action android:name="android.settings.SETTINGS" />
@@ -15,15 +21,6 @@
         <intent>
             <action android:name="android.settings.WIFI_SETTINGS" />
         </intent>
-        <package android:name="com.quark.yun.tv" />
-        <package android:name="com.coocaa.hdmi2" />
-        <package android:name="com.xiaodianshi.tv.yst" />
-        <package android:name="com.spotify.tv.android" />
-        <package android:name="com.hpplay.happyplay.aw" />
-        <package android:name="com.tianci.appstore" />
-        <package android:name="com.ixigua.android.tv.wasu" />
-        <package android:name="com.hunantv.market" />
-        <package android:name="com.netease.cloudmusic.tv" />
     </queries>
 
     <application

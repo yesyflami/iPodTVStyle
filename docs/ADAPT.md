@@ -184,28 +184,49 @@ adb uninstall <homeApplicationId>
 
 ---
 
-## 4. 换成你自己的应用
+## 4. 轮播里的应用从哪来
 
-打开 `launcher/app/src/main/java/com/yesy/carouselhome/CarouselView.java`，
-顶部的 `apps[]` 数组就是轮播内容：
+**从你自己的电视上读，不用改代码。** 桌面起来时向 `PackageManager` 要本机的应用清单：
+
+1. 先查 `ACTION_MAIN` + `CATEGORY_LEANBACK_LAUNCHER`（真正的电视应用）；
+2. 再查 `ACTION_MAIN` + `CATEGORY_LAUNCHER`（普通应用、侧载的手机应用）；
+3. 同包名以 leanback 那条为准，去重；
+4. 两组各自按系统语言排序，电视应用排在前面；
+5. 名字用应用自带的 label（中文应用显示中文），图标用 `getApplicationIcon()`。
+
+所以别人装完看到的是**他自己电视上的应用**，作者电视上那 9 个不会再冒出来。
+装好之后又装了新应用：回到桌面（HOME）时会自动比对清单，变了就重建轮播。
+
+### 想隐藏某个应用
+
+`CarouselView.java` 里有一个默认为空的名单：
 
 ```java
-private final AppItem[] apps = {
-    new AppItem("夸克网盘",  "com.quark.yun.tv",       R.drawable.quark,    0xfff7f7f5, .54f),
-    new AppItem("HDMI2",    "com.coocaa.hdmi2",       R.drawable.hdmi2,    0xffe60012, .58f, 1),
-    ...
-};
+private static final String[] HIDDEN_PACKAGES = {};
 ```
 
-| 字段 | 含义 |
-|---|---|
-| 名字 | 兜底名字。**运行时会被 `PackageManager.getApplicationLabel()` 覆盖**，所以中文应用会显示中文名 |
-| 包名 | 按确认键时要启动的 app；也用来查真实名字 |
-| `R.drawable.xxx` | 卡片上的 logo，放在 `res/drawable-nodpi/` |
-| 颜色 | 卡片底色（ARGB），尽量取 logo 的主色 |
-| 第 6 个参数 | **只有信号源卡片需要**：HDMI 序号，**0 基**（`0`=HDMI 1，`1`=HDMI 2，`2`=HDMI 3）。普通应用不写这个参数 |
+把不想看到的包名填进去即可（比如电视自带的某个广告入口）：
 
-### 信号源（HDMI）卡片的特殊处理
+```java
+private static final String[] HIDDEN_PACKAGES = {"com.example.adbox"};
+```
+
+### 卡片长什么样
+
+| 元素 | 来源 |
+|---|---|
+| 名字 | `PackageManager` 报告的应用名 |
+| 图标 | `PackageManager.getApplicationIcon()` |
+| 底色 | 从图标里采样出来的主色；和图标本身明暗太接近时自动换成浅底或深底，保证 logo 看得见 |
+| 比例 | 按图标原始比例居中，宽度上限 54%，不拉伸；图标本身是整块铺满的方形就直接铺满卡片 |
+| 字体 | 内置衬线子集覆盖得到就用衬线，否则逐字回落到系统黑体 |
+
+不用再从电视上抠图标、也不用往 `res/` 里放任何图片。
+
+> 图标是各家厂商的商标，但这里读的是**你自己机器上已安装应用**的图标，
+> 项目本身不再分发任何第三方 logo。
+
+### 信号源（HDMI）卡片
 
 创维/酷开电视的 HDMI 切换不是启动某个 Activity，而是向系统 provider 发一次调用：
 
@@ -218,82 +239,37 @@ getContentResolver().call(
         "METHOD_GOTO_SOURCE", null, args);
 ```
 
-`index` 写错就会出现「卡片写着 HDMI 2，实际切到 HDMI 3」——这正是早期版本的一个真实 bug：
-当时靠一个独立的小 APK 转发，里面把 `index` 写死成了 `2`。
+`index` 写错就会出现「卡片写着 HDMI 2，实际切到 HDMI 3」——这正是早期版本的一个真实 bug。
 
-现在这段逻辑收进了 launcher 自己的 `switchSource()`；provider 不存在时（非创维机型）
-会自动退回按包名启动，所以其它品牌不会崩。
-| 比例 | logo 占卡片宽度的比例，0.48–0.70 之间比较好看；logo 本身留白多的可以放大 |
-
-改完记得同步 `AndroidManifest.xml` 里的 `<queries>` 列表：
-
-```xml
-<package android:name="com.quark.yun.tv" />
-```
-
-Android 11+ 不加这一段的话，`getApplicationLabel()` 查不到别的 app 的名字，
-就会退回数组里的兜底名字。
-
-### 图标准备
-
-推荐规格：**正方形、透明背景 PNG、≥ 256×256**。
-名字随意，扩展名必须是小写 `.png`，放 `res/drawable-nodpi/`。
-
-从电视上抠图标的两种方法：
-
-```bash
-# 方法 A：从 APK 里挖
-adb shell pm path com.spotify.tv.android      # → /data/app/.../base.apk
-adb pull /data/app/.../base.apk /tmp/app.apk
-unzip -o /tmp/app.apk -d /tmp/app
-# 在 /tmp/app/res/mipmap-xxxhdpi 里找最大的那张（通常是 ic_launcher.png）
-
-# 方法 B：截屏裁切（图标是矢量绘制、APK 里没有位图时用这个）
-adb exec-out screencap -p > /tmp/screen.png
-# 然后自己裁成正方形
-```
-
-> 图标是各家厂商的商标，**只在自己家里用没问题**；如果要把改好的包发出去，
-> 记得换成你自己的图或者留空。
+现在这一条不用手写了：`hdmiSourceIndex()` 按包名识别 SkyOS 的信号源 trampoline
+（`com.coocaa.hdmi1` … `com.coocaa.hdmi4`），包名里的数字就是 1 基的输入号，
+所以 `com.coocaa.hdmi2` 自动换算成 `index = 1`。provider 不存在时（非创维机型）
+自动退回按包名启动，其它品牌不会崩。
 
 ---
 
 ## 5. 字体（中文衬线）
 
-应用名用的是衬线字体。Android 系统自带的 `serif` 家族**只包含拉丁字形**，
-中文会掉回黑体，看起来就跟英文名不协调。所以项目里内嵌了一个只含常用字的
-字体子集（22 KB）：
+应用名默认用内置的衬线子集：
 
 ```
 launcher/app/src/main/assets/app_name_serif.ttf
 ```
 
-它只覆盖当前这 9 个应用名里出现的汉字。**你改了应用名单之后要重新生成**，
-否则新出现的字会掉回黑体：
+它只有 22 KB，覆盖常用字。覆盖不到的字会逐字回落到系统黑体（`Paint.hasGlyph()`），
+**所以新应用名不会出现豆腐块**，也不需要为了换应用而重新生成字体。
+
+想让所有中文名都用衬线，可以生成一个更大的子集：
 
 ```bash
 tools/make-font-subset.py \
-  --names "夸克网盘,云视听小电视,乐播投屏,应用圈,华数鲜时光,芒果TV,网易云音乐,HDMI2,Spotify" \
+  --names "夸克网盘,云视听小电视,乐播投屏,应用圈,华数鲜时光,芒果TV,网易云音乐" \
   --out launcher/app/src/main/assets/app_name_serif.ttf
 ```
 
 脚本默认从 macOS 的 `/System/Library/Fonts/Supplemental/Songti.ttc` 取字形。
 Linux 上把 `SOURCE_FONT` 指向任意一个中文衬线字体（思源宋体 / Noto Serif CJK）即可。
 需要 `pip install fonttools`。
-
-嫌麻烦也可以直接换成系统字体：把 `CarouselView.java` 里的
-
-```java
-private final Typeface nameFace = loadNameFace();
-```
-
-改成
-
-```java
-private final Typeface nameFace = Typeface.create(Typeface.SERIF, Typeface.BOLD);
-```
-
-英文名会是衬线，中文名掉回黑体 —— 能用，只是不统一。
 
 ---
 
@@ -328,8 +304,10 @@ private final Typeface nameFace = Typeface.create(Typeface.SERIF, Typeface.BOLD)
 |---|---|
 | 按 HOME 没有选择器 | 包名不在白名单。回到第 1 节 |
 | 装不上，`UPDATE_INCOMPATIBLE` | 同包名已存在（多半是原厂桌面）。换白名单里的另一个名字，别卸载系统组件 |
-| 启动后白屏/黑屏 | 大概率是图标资源缺失，看 `adb logcat \| grep -i carousel` |
+| 启动后白屏/黑屏 | 轮播空的时候会退化成一张“设置”卡片，所以白屏多半是 `homeApplicationId` 不对或 `queries` 被改坏了 |
 | 切换掉帧 | 关掉 `GEAR_SUPERSAMPLE=4` 那种高开销烘焙，或者把 `ANIMATION_MS` 调长 |
-| 中文名变成黑体 | 字体子集没覆盖这个字，跑第 5 节的脚本 |
+| 应用列表和电视上不一致 | 被 `HIDDEN_PACKAGES` 挡掉的不会出现；装完新应用回一次 HOME 才会刷新 |
+| HDMI 卡片切错输入 | 只对 `com.coocaa.hdmiN` 这种 trampoline 生效；自定义包名要在 `hdmiSourceIndex()` 里补规则 |
+| 中文名叫回黑体 | 衬线子集没覆盖这个字，属于正常回落；想统一衬线见第 5 节 |
 | 电视重启后又回原厂桌面 | 有些固件会在开机时重置 HOME 角色，重新 `set-home-activity` 或停用原桌面 |
 | OTA 升级后桌面被换回去 | 同上看，重新设一次 |
