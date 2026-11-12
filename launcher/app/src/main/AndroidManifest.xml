@@ -5,7 +5,7 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <!-- Package visibility: the ring is built from whatever the TV reports here. Never list
-         individual packages — that was how the reference TV's apps leaked into everyone's build. -->
+         individual packages: that was how the reference TV's apps leaked into everyone's build. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
