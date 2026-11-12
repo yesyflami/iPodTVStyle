@@ -13,6 +13,14 @@ captures/
 *.keystore
 !debug.keystore
 
+# Python for the connection layer (tools/requirements.txt)
+tools/venv/
+__pycache__/
+*.pyc
+
+# Handover recovery notes land next to the repo when a rollback is incomplete
+ipodtvstyle-recovery-*.txt
+
 # promo render pipeline scratch
 promo/frames/
 promo/*.png.tmp

@@ -22,10 +22,15 @@ import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.provider.Settings;
+import android.text.format.DateFormat;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.animation.PathInterpolator;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.text.Collator;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -58,16 +63,20 @@ public final class CarouselView extends View {
     /** Beyond this the slot is empty; the wrap happens while the tile is already invisible. */
     private static final float WRAP_DISTANCE = 5f;
 
-    /** Tiles baked before the first frame, and how wide the startup window is on a long list. */
-    private static final int EAGER_BAKE_LIMIT = 15;
-    private static final int STARTUP_WINDOW = 4;
+    /** Tiles baked before the first frame; the rest are warmed up after it, in small chunks. */
+    private static final int FIRST_FRAME_TILES = 5;
+    private static final int WARMUP_CHUNK = 4;
+    private static final long WARMUP_DELAY_MS = 300L;
     private static final float LOGO_WIDTH = .54f;
 
     /**
-     * Optional: packages this TV's owner does not want to see in the ring. Empty by default —
-     * the ring is whatever the TV reports, never a list baked into the source.
+     * Packages kept out of the ring. This list is empty on purpose: the default is whatever the
+     * TV reports. A owner who wants a tile gone writes the package name into
+     * <code>&lt;app files dir&gt;/hidden.txt</code> (one per line, <code>#</code> comments), which
+     * needs no rebuild - see docs/ADAPT.md §4.
      */
     private static final String[] HIDDEN_PACKAGES = {};
+    private static final String HIDDEN_FILE = "hidden.txt";
 
     /**
      * One tile of the ring. Nothing here is authored by hand: the label, the package and the
@@ -102,20 +111,28 @@ public final class CarouselView extends View {
     /**
      * Ask the TV which apps it has. LEANBACK entries come first (real TV apps), plain LAUNCHER
      * ones after them, so a sideloaded phone app can never push a TV app off the ring. When a
-     * package exposes both, the leanback entry wins.
+     * package exposes both, the leanback entry wins. Input/source trampolines go last, so four
+     * HDMI tiles cannot interleave with the apps between them.
      */
     private AppItem[] discoverApps() {
         PackageManager manager = getContext().getPackageManager();
         String self = getContext().getPackageName();
+        HashSet<String> hidden = hiddenPackages();
         ArrayList<AppItem> tvApps = new ArrayList<>();
         ArrayList<AppItem> otherApps = new ArrayList<>();
-        collectApps(manager, self, Intent.CATEGORY_LEANBACK_LAUNCHER, tvApps);
-        collectApps(manager, self, Intent.CATEGORY_LAUNCHER, otherApps);
+        collectApps(manager, self, Intent.CATEGORY_LEANBACK_LAUNCHER, hidden, true, tvApps);
+        collectApps(manager, self, Intent.CATEGORY_LAUNCHER, hidden, false, otherApps);
 
         ArrayList<AppItem> merged = new ArrayList<>(tvApps.size() + otherApps.size());
+        ArrayList<AppItem> inputs = new ArrayList<>();
         HashSet<String> seen = new HashSet<>();
-        for (AppItem app : tvApps) if (seen.add(app.packageName)) merged.add(app);
-        for (AppItem app : otherApps) if (seen.add(app.packageName)) merged.add(app);
+        for (AppItem app : tvApps) {
+            if (seen.add(app.packageName)) (app.sourceIndex >= 0 ? inputs : merged).add(app);
+        }
+        for (AppItem app : otherApps) {
+            if (seen.add(app.packageName)) (app.sourceIndex >= 0 ? inputs : merged).add(app);
+        }
+        merged.addAll(inputs);
         if (merged.isEmpty()) {
             // Nothing queryable: keep the HOME button useful instead of an empty room.
             merged.add(new AppItem(settingsLabel(manager), "com.android.settings", -1));
@@ -124,7 +141,7 @@ public final class CarouselView extends View {
     }
 
     private void collectApps(PackageManager manager, String self, String category,
-                             ArrayList<AppItem> sink) {
+                             HashSet<String> hidden, boolean leanback, ArrayList<AppItem> sink) {
         Intent intent = new Intent(Intent.ACTION_MAIN).addCategory(category);
         List<ResolveInfo> resolved;
         try {
@@ -137,7 +154,11 @@ public final class CarouselView extends View {
             ActivityInfo activity = entry.activityInfo;
             if (activity == null || activity.packageName == null) continue;
             if (activity.packageName.equals(self)) continue; // the launcher is not in its own ring
-            if (isHidden(activity.packageName)) continue;
+            if (hidden.contains(activity.packageName)) continue;
+            // A phone-style LAUNCHER entry inside a system namespace is a settings pane or a
+            // provisioning app, not something anyone opens from a home screen. A proper TV entry
+            // for the same package still gets in, because that pass is not filtered.
+            if (!leanback && isSystemPane(activity.packageName)) continue;
             if (!activity.enabled) continue;
             CharSequence raw = entry.loadLabel(manager);
             String label = raw == null ? "" : raw.toString().trim();
@@ -147,6 +168,12 @@ public final class CarouselView extends View {
         }
         final Collator collator = Collator.getInstance(Locale.getDefault());
         sink.sort((first, second) -> collator.compare(first.name, second.name));
+    }
+
+    private static boolean isSystemPane(String packageName) {
+        return packageName.equals("android")
+                || packageName.startsWith("com.android.")
+                || packageName.startsWith("com.google.android.");
     }
 
     /**
@@ -166,11 +193,29 @@ public final class CarouselView extends View {
         return Integer.parseInt(tail) - 1;
     }
 
-    private static boolean isHidden(String packageName) {
-        for (String hidden : HIDDEN_PACKAGES) {
-            if (hidden.equals(packageName)) return true;
+    /** The built-in list plus whatever the owner wrote into &lt;files dir&gt;/hidden.txt. */
+    private HashSet<String> hiddenPackages() {
+        HashSet<String> hidden = new HashSet<>();
+        for (String packageName : HIDDEN_PACKAGES) hidden.add(packageName);
+        File file = new File(getContext().getFilesDir(), HIDDEN_FILE);
+        if (!file.isFile()) return hidden;
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.length() == 0 || trimmed.startsWith("#")) continue;
+                hidden.add(trimmed);
+            }
+        } catch (IOException ignored) {
+            // Unreadable list: the built-in one still applies.
         }
-        return false;
+        return hidden;
+    }
+
+    /** So an edit to hidden.txt is noticed on the next visit to Home, not on the next reboot. */
+    private String hiddenFileStamp() {
+        File file = new File(getContext().getFilesDir(), HIDDEN_FILE);
+        return file.isFile() ? file.lastModified() + ":" + file.length() : "-";
     }
 
     /** The face for the selected label, resolved once per app and then cached on the tile. */
@@ -233,8 +278,12 @@ public final class CarouselView extends View {
     private final float[] reflectionSource = {0, 0, REFL_W, 0, REFL_W, REFL_H, 0, REFL_H};
     private final float[] destination = new float[8];
     private final float[] occluder = new float[8];
-    private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.US);
-    private final SimpleDateFormat dateFormat = new SimpleDateFormat("EEEE, MMM d, yyyy", Locale.US);
+    private final Locale locale = Locale.getDefault();
+    private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
+    /** Localized order and script: "SUNDAY, NOV 8, 2026" in English, "2026年11月8日星期日" in Chinese. */
+    private final SimpleDateFormat dateFormat = new SimpleDateFormat(
+            DateFormat.getBestDateTimePattern(Locale.getDefault(), "yMMMdEEEE"),
+            Locale.getDefault());
     private final SharedPreferences preferences;
     private final Typeface clockFace = loadFace("/system/fonts/Roboto-Black.ttf", "sans-serif-black");
     private final Typeface dateFace = loadFace("/system/fonts/Roboto-Medium.ttf", "sans-serif-medium");
@@ -267,23 +316,39 @@ public final class CarouselView extends View {
         // point, which is why the bundled serif face used to silently fall back.
         nameSerif = loadNameFace();
         apps = discoverApps();
-        installedSignature = signatureOf(apps);
+        installedSignature = currentSignature(apps);
         renderOrder = new int[apps.length];
         renderPositions = new float[apps.length];
         prepareCards();
         bakeGear();
     }
 
-    /** Bake the tiles the ring needs now; a long app list is baked as it is browsed. */
+    /**
+     * Bake only what the first frame can show. Baking every tile in the constructor was up to a
+     * one-to-two-second white window on a 1 GB television: the ring is already usable with the
+     * five tiles around the selection, and everything else is warmed up after that frame.
+     */
     private void prepareCards() {
-        if (apps.length <= EAGER_BAKE_LIMIT) {
-            for (AppItem app : apps) ensureCard(app);
-            return;
-        }
-        for (int offset = -STARTUP_WINDOW; offset <= STARTUP_WINDOW; offset++) {
+        int half = FIRST_FRAME_TILES / 2;
+        for (int offset = -half; offset <= half; offset++) {
             ensureCard(apps[wrap(selected + offset)]);
         }
     }
+
+    /** Bakes the remaining tiles a few at a time, so no single frame pays for the whole ring. */
+    private final Runnable warmUp = new Runnable() {
+        @Override public void run() {
+            int baked = 0;
+            for (AppItem app : apps) {
+                if (app.card != null) continue;
+                ensureCard(app);
+                if (++baked >= WARMUP_CHUNK) {
+                    postDelayed(this, 16L);
+                    return;
+                }
+            }
+        }
+    };
 
     private void ensureCard(AppItem app) {
         if (app.card != null) return;
@@ -514,7 +579,7 @@ public final class CarouselView extends View {
     /** Apps can be installed or removed while we are off screen: rebuild only when they were. */
     public void refreshAppsIfChanged() {
         AppItem[] found = discoverApps();
-        String signature = signatureOf(found);
+        String signature = currentSignature(found);
         if (signature.equals(installedSignature)) return;
         recycleCards();
         apps = found;
@@ -526,6 +591,13 @@ public final class CarouselView extends View {
         pendingDirection = 0;
         prepareCards();
         invalidate();
+        removeCallbacks(warmUp);
+        postDelayed(warmUp, WARMUP_DELAY_MS);
+    }
+
+    /** The installed list plus the hidden.txt stamp, so editing that file also triggers a rebuild. */
+    private String currentSignature(AppItem[] items) {
+        return signatureOf(items) + '|' + hiddenFileStamp();
     }
 
     private Bitmap bakeReflection(Bitmap face, int background) {
@@ -652,11 +724,15 @@ public final class CarouselView extends View {
         super.onAttachedToWindow();
         refreshAppsIfChanged();
         removeCallbacks(clockTick);
+        removeCallbacks(warmUp);
         postDelayed(clockTick, 30_000L);
+        // After the first frame: the tiles beyond the five around the selection.
+        postDelayed(warmUp, WARMUP_DELAY_MS);
     }
 
     @Override protected void onDetachedFromWindow() {
         removeCallbacks(clockTick);
+        removeCallbacks(warmUp);
         super.onDetachedFromWindow();
     }
 
@@ -827,6 +903,21 @@ public final class CarouselView extends View {
         output[offset + 1] = DESIGN_H * .5f + (worldY - DESIGN_H * .5f) * projection;
     }
 
+    /**
+     * The date line. The reference design uppercases it, which is right for Latin scripts and
+     * wrong for CJK ones - and the order of the parts comes from the system locale, not from a
+     * hard-coded "EEEE, MMM d, yyyy".
+     */
+    private String headerDate(Date now) {
+        String date = dateFormat.format(now);
+        return isCjk(locale) ? date : date.toUpperCase(locale);
+    }
+
+    private static boolean isCjk(Locale locale) {
+        String language = locale.getLanguage();
+        return "zh".equals(language) || "ja".equals(language) || "ko".equals(language);
+    }
+
     private void drawHeader(Canvas canvas, int foreground, int secondary) {
         Date now = new Date();
         textPaint.setTextAlign(Paint.Align.LEFT);
@@ -843,7 +934,7 @@ public final class CarouselView extends View {
         textPaint.setTextSize(18f);
         textPaint.setLetterSpacing(0.11f);
         textPaint.setColor(dark ? 0xff9a9a9a : 0xff8e8e93);
-        canvas.drawText(dateFormat.format(now).toUpperCase(Locale.US), 130f, 102f, textPaint);
+        canvas.drawText(headerDate(now), 130f, 102f, textPaint);
         textPaint.setLetterSpacing(0f);
         textPaint.setTypeface(Typeface.DEFAULT);
 
@@ -1134,9 +1225,9 @@ public final class CarouselView extends View {
         if (headerFocus == 0) {
             toggleTheme();
         } else if (headerFocus == 1) {
-            getContext().startActivity(new Intent(Settings.ACTION_SETTINGS));
+            openSystemPage(Settings.ACTION_SETTINGS);
         } else if (headerFocus == 2) {
-            getContext().startActivity(new Intent(Settings.ACTION_WIFI_SETTINGS));
+            openSystemPage(Settings.ACTION_WIFI_SETTINGS);
         } else {
             AppItem app = apps[selected];
             if (app.sourceIndex >= 0 && switchSource(app.sourceIndex)) return;
@@ -1154,6 +1245,31 @@ public final class CarouselView extends View {
                 getContext().startActivity(intent);
             } catch (RuntimeException ignored) {
                 // Nothing on this firmware can handle the entry: stay on the ring.
+            }
+        }
+    }
+
+    /**
+     * Opens a system settings page. Not every firmware handles every action, and an unhandled one
+     * throws ActivityNotFoundException - from the HOME activity, which would leave the TV without
+     * a usable home screen until ADB reopens it. So: try, and if the page is missing, fall back to
+     * whatever "settings" means here.
+     */
+    private void openSystemPage(String action) {
+        Intent intent = new Intent(action);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            getContext().startActivity(intent);
+            return;
+        } catch (RuntimeException missing) {
+            // Fall through to the plain settings page (or do nothing at all).
+        }
+        if (!Settings.ACTION_SETTINGS.equals(action)) {
+            try {
+                getContext().startActivity(
+                        new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (RuntimeException ignored) {
+                // No settings page on this firmware: stay on the ring rather than crash Home.
             }
         }
     }

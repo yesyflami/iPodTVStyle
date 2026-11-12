@@ -1,11 +1,12 @@
 # 适配到你的电视
 
-> English summary: change `homeApplicationId` in `launcher/gradle.properties` to the
-> package name *your* TV uses for its home screen, then `./gradlew assembleRelease`,
-> `adb install -r`, and pick the app when you press HOME. Everything else is optional
-> polish. The rest of this document is the detailed Chinese walkthrough.
+> English summary: `python3 -m venv tools/venv && tools/venv/bin/pip install -r tools/requirements.txt`,
+> then `TV_HOST=<your tv ip> tools/install.sh`. It builds, installs, starts the launcher, verifies it,
+> takes the HOME key only after that, and rolls back if HOME does not land on it. Change the package
+> name (`-PlauncherApplicationId=`) or hide tiles (`hidden.txt`) only if this TV needs it — §1, §4, §5.
+> The rest of this document is the detailed Chinese walkthrough.
 
-这份文档按顺序解决四件事：**包名 → 连上电视 → 装上去并设为默认 → 换成你自己的应用**。
+这份文档按顺序解决四件事：**确认电视怎么认桌面 → 连上电视 → 装上去并接管 HOME → 换成你自己的应用**。
 
 ---
 
@@ -24,10 +25,10 @@ Android TV 的"桌面"就是一个声明了 `android.intent.category.HOME` 的�
 
 所以要换桌面，只需要：**装一个同样声明 HOME 的 app，然后让系统选它**。
 
-唯一的坑是：**大多数电视固件不允许任意包名成为默认桌面**。厂商在系统里
-留了一份白名单，只有白名单里的包名（也就是原厂桌面的包名）才能拿到 HOME 角色。
-所以我们要把自己的 app **假装成原厂桌面包名**装进去 —— 这就是
-`homeApplicationId` 这一行的意义。
+唯一的坑是：**一部分电视固件不允许任意包名成为默认桌面**（厂商留了白名单），
+还有一部分机型（部分创维/酷开）**根本不走 Android 的 HOME 偏好**，Home 键归固件属性管。
+所以本项目默认用中性包名安装、由脚本先问电视再动手；只有在查明白名单之后，
+才在**编译时**用 `-PlauncherApplicationId=` 显式指定一次（第 1 节）。
 
 ---
 
@@ -39,60 +40,57 @@ Android TV 的"桌面"就是一个声明了 `android.intent.category.HOME` 的�
 
 ---
 
-## 1. 找到你电视的 HOME 包名
+## 1. 查清这台电视怎么认桌面
 
-连上 ADB 之后（见第 2 节），任选一条命令：
+要弄清三件事：**现在谁拥有 HOME**、**固件认不认任意包名**、**Home 键是不是走 Android 的偏好**。
+前两件一条命令就能看：
 
 ```bash
-# 方法 A：直接问系统默认桌面是谁
-adb shell cmd package resolve-activity -c android.intent.category.HOME
+# 现在谁拥有 HOME（install.sh 问的也是这一句）
+TV_HOST=192.168.1.50 tools/venv/bin/python -I tools/tv.py \
+  'cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME'
 
-# 方法 B：看当前前台是哪个 app（按一下 HOME 键再执行）
-adb shell dumpsys window | grep -E "mCurrentFocus|mFocusedApp"
-
-# 方法 C：翻所有声明了 HOME 的 app
-adb shell dumpsys package | grep -B4 "android.intent.category.HOME" | grep "Package \["
+# 有哪些 app 声明了 HOME
+TV_HOST=192.168.1.50 tools/venv/bin/python -I tools/tv.py \
+  'cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME'
 ```
 
-以创维 / 酷开（SkyOS）为例，输出是：
+**先别改包名。** 直接按第 3 节跑 `install.sh`，它会：
 
+1. 用中性包名 `com.ipodtvstyle.home` 安装；
+2. 启动新桌面，并校验它真的起来了；
+3. 只有前两步都成功，才停用**它认识的**原厂桌面、把 HOME 指过去；
+4. 如果 HOME 最后没有落到新桌面，它把原厂桌面放回去，并告诉你原因。
+
+第 4 步通过 → **这台机器不需要改包名**，就这样用。
+
+### 只有白名单机型才需要指定包名
+
+固件只接受白名单包名时，`set-home-activity` 会"成功"但 HOME 仍归原厂（所以第 3 节的复验很关键）。
+这时才查白名单里的名字，并在**编译时**传进去——不改源码，也不改 `gradle.properties`：
+
+```bash
+# 一步到位
+BUILD_ARGS=-PlauncherApplicationId=<白名单包名> TV_HOST=192.168.1.50 tools/install.sh
+
+# 或者先单独编译，再只做安装交接
+tools/build.sh -PlauncherApplicationId=<白名单包名>
+TV_HOST=192.168.1.50 SKIP_BUILD=1 tools/install.sh
 ```
-priority=0 ... name=com.coocaa.homepage.vast.HomePageActivity
-packageName=com.tianci.movieplatform
-```
 
-这里 **`com.tianci.movieplatform` 是原厂桌面的包名**。但创维的白名单认的是
-`com.coocaa.tvhome`（一个已经不再使用的历史包名），所以本项目在创维上
-`homeApplicationId=com.coocaa.tvhome` 才能生效。
-
-> 换句话说：**白名单里的名字不一定是"当前桌面"的包名**。如果直接填原厂桌面包名
-> 装不进去（签名冲突），就说明要用白名单里另一个名字。
-
-### 已知对照表
-
-| 品牌 / 系统 | `homeApplicationId` 填什么 | 备注 |
+| 品牌 / 系统 | 已知的白名单包名 | 备注 |
 |---|---|---|
-| 创维 / 酷开 SkyOS | `com.coocaa.tvhome` | 本项目原始机型（Skyworth 7S77，Android 8） |
-| Google TV / Sony | `com.google.android.tvlauncher` | 需要先停用原桌面，否则签名冲突 |
-| 小米 / PatchWall | `com.mitv.tvhome` | 部分机型允许任意包名，见下方"例外" |
-| TCL Android TV | `com.tcl.tvlauncher` | 同上 |
-| 其他 | 用上面的命令查 | 通常就是 `mCurrentFocus` 里的那个包名 |
+| 创维 / 酷开 SkyOS | 见 `docs/devices/`；作者原机型用过 `com.coocaa.tvhome` | 作者那台 7S77（Android 8）认这个名字；**新型号不一定还认** |
+| 小米 / PatchWall | 上游记录过 `com.ts.launcher` | 部分机型接受任意包名，先按默认试 |
+| ColorOS TV（OPPO / 一加） | 上游记录过 `com.oneplus.tv.launcher2` | 默认 applicationId 会被拒 |
+| Google TV / Sony | 通常不需要 | 停用原厂桌面即可拿到 HOME |
 
-### 例外：不需要伪装的机型
-
-有些固件的 HOME 角色不设白名单，任何声明了 HOME 的 app 都能被选中。判断方法：
-
-1. 先不改包名，直接用默认的 `com.ipodtvstyle.home` 编译安装
-2. 按 HOME 键，看选择器里有没有 iPodTVStyle
-3. 有 → 你的电视不需要伪装包名，直接用干净的名字更安全
-4. 没有 → 回到白名单方案
-
-**建议先用默认包名试一次**，能省掉后面很多麻烦（比如 OTA 升级后原厂桌面回来、
-或者卸载时把系统组件一起带走）。
+> 白名单里的名字**不一定等于当前桌面的包名**。直接填原厂桌面包名一般会被签名冲突
+> （`INSTALL_FAILED_UPDATE_INCOMPATIBLE`）挡住，因为那通常是系统应用。
 
 ---
 
-## 2. ADB 连上电视
+## 2. 连上电视
 
 ### 电视端
 
@@ -102,85 +100,92 @@ packageName=com.tianci.movieplatform
 
 ### 电脑端
 
+这个项目**不需要电脑上装 `adb`**：连接层是 `tools/tv.py`，一个纯 Python 的 ADB 客户端
+（来自 [CleanYourTV](https://github.com/Gathin23/cleanyourtv)，MIT）。它直接用 TCP 连电视，
+所以在被沙箱限制、没有 adb 二进制、或者 adb 被别的工具占着的机器上也能用。
+
 ```bash
-adb connect 192.168.1.50:5555
-adb devices
+python3 -m venv tools/venv && tools/venv/bin/pip install -r tools/requirements.txt   # 只需一次
+TV_HOST=192.168.1.50 tools/venv/bin/python -I tools/tv.py --probe
 ```
 
-- 显示 `device` → 好了
-- 显示 `unauthorized` → 电视上会弹一个"允许调试"的对话框，用遥控器同意
-- 显示 `offline` → `adb disconnect && adb connect <ip>:5555` 重来
-- 连不上 → 确认电视和电脑在同一网段；有些路由器开了 AP 隔离（客户端隔离），关掉
+- 打出型号 / Android 版本 → 通了
+- 电视上弹"允许调试" → 用遥控器同意，再跑一次
+- 端口被拒 → 电视的**网络调试**开关没开，或者路由器开了客户端隔离（AP isolation）
+- 电视只开了「无线调试 + 配对码」（部分 Google TV）→ 用系统 `adb pair` 配一次，然后
+  `TV_ADB_BINARY=$(which adb) TV_HOST=<ip>:<port>`，详见上游的 `tools/native-adb.md`
+
+想继续用 `adb` 也行：`adb connect 192.168.1.50:5555 && adb devices`，只要显示 `device` 就够。
+后面所有脚本用的是 `tools/tv.py`，两者不冲突。
 
 ---
 
 ## 3. 编译、安装、设为默认桌面
 
-### 编译
-
-需要 **JDK 17** 和 **Android SDK 34**。装好 Android Studio 的话，直接用
-Android Studio 打开 `launcher/` 目录也行。
-
-命令行：
+**一条命令：**
 
 ```bash
-cd launcher
-export JAVA_HOME=/path/to/jdk-17
-export ANDROID_HOME=/path/to/android-sdk
-./gradlew assembleRelease
-# 产物：launcher/app/build/outputs/apk/release/app-release.apk
+TV_HOST=192.168.1.50 tools/install.sh
 ```
 
-不想装 SDK 的话，`tools/build.sh` 会把这两个环境变量读进来再调用 gradlew。
+Windows：
 
-### 安装
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\install.ps1 -TvHost 192.168.1.50
+```
+
+它按下面的顺序做，任何一步不对就停下，并把电视恢复到原样：
+
+| 步骤 | 检查什么 |
+|---|---|
+| 1. 探测 | `tv.py --probe` 通不通；电视的 SDK 是否 ≥ `minSdk`（低于就直接停，不白编译一分钟） |
+| 2. 编译 | `tools/build.sh`：自动找 JDK 17–22 与 Android SDK（不再写死 macOS 路径），产物 `launcher/app/build/outputs/apk/release/app-release.apk` |
+| 3. 上传 | `b64push.py` 分块上传并用 md5 校验，失败不动目标文件 |
+| 4. 安装 | `pm install` **单独执行**并判 `Success`；失败时原厂桌面完全没被动过 |
+| 5. 启动 | `am start -W` 并同时校验 `Status: ok` 且没有 `Error:` —— 只是"把任务提到前台"不算 |
+| 6. 交接 | 只有前 5 步都过了，才 `pm disable-user` 掉**它认识的**原厂桌面，然后 `cmd package set-home-activity` |
+| 7. 复验 | 再查一次 HOME 归属；不是我们的就 `pm enable` 原厂桌面、把 HOME 还回去，并把恢复命令写进文件 |
+
+它只停用认识的 4 个原厂桌面（`com.google.android.tvlauncher`、
+`com.google.android.apps.tv.launcherx`、`com.google.android.leanbacklauncher`、`com.mitv.tvhome`）。
+电视报的是别的名字（或者 `android` = 选择器）时它**不会猜**，而是停下来让你明确指定：
 
 ```bash
-adb install -r launcher/app/build/outputs/apk/release/app-release.apk
+STOCK_LAUNCHER=com.tianci.movieplatform TV_HOST=192.168.1.50 tools/install.sh
+STOCK_LAUNCHER=none TV_HOST=192.168.1.50 tools/install.sh   # 不动原厂桌面，只把新桌面装成普通应用
 ```
 
-报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`（签名冲突）→ 说明电视上已经有一个
-同包名的 app（一般是原厂桌面本身）。这种包名不要直接用：
+`STOCK_LAUNCHER=none` 是**最安全的路线**：原厂桌面继续当 Home，新桌面从应用列表里打开。
+适合固件把 HOME 交给自家属性、或你只是想先看看效果的机型。
 
-```bash
-# 先看看同包名的是谁
-adb shell pm path <homeApplicationId>
-```
+### 只在需要时才换包名
 
-如果是系统应用，**不要卸载它** —— 换一个白名单里的包名，或者用第 1 节末尾的
-"例外"路线。
-
-### 设为默认桌面
-
-按遥控器 **HOME 键**，系统会弹选择器，选 iPodTVStyle → 允许/始终。
-
-如果选择器不出现：
-
-```bash
-# 直接把 HOME 角色指过去
-adb shell cmd package set-home-activity <homeApplicationId>/com.gathin.tvhome.MainActivity
-adb shell am start -n <homeApplicationId>/com.gathin.tvhome.MainActivity
-```
-
-或者先停用原厂桌面（**这一步要谨慎，先记下原桌面包名**）：
-
-```bash
-adb shell pm disable-user --user 0 com.tianci.movieplatform
-```
+默认包名是中性的 `com.ipodtvstyle.home`。**只有当固件只把 HOME 交给白名单里的包名**时，
+才需要在编译时指定（见 §4），不要在源码里改默认值。
 
 ### 还原
 
-```bash
-# 1) 把 HOME 角色还给原桌面
-adb shell pm enable com.tianci.movieplatform
-adb shell cmd package set-home-activity com.tianci.movieplatform/com.coocaa.homepage.vast.HomePageActivity
+脚本结束时会把还原命令打出来，同时恢复文件会落在 `~/ipodtvstyle-recovery-<ip>.txt`：
 
-# 2) 卸载 iPodTVStyle（如果包名是伪装的原厂名，卸载前先确认它不是你唯一能进系统的桌面）
-adb uninstall <homeApplicationId>
+```bash
+# 1) 原厂桌面重新启用，并把 HOME 还给它
+TV_HOST=192.168.1.50 tools/venv/bin/python -I tools/tv.py 'pm enable --user 0 <stock>'
+TV_HOST=192.168.1.50 tools/venv/bin/python -I tools/tv.py \
+  'cmd package set-home-activity --user 0 $(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME <stock> | tail -n 1)'
+
+# 2) 确认 HOME 归位
+TV_HOST=192.168.1.50 tools/venv/bin/python -I tools/tv.py \
+  'cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME'
+
+# 3) 想彻底去掉新桌面
+TV_HOST=192.168.1.50 tools/venv/bin/python -I tools/tv.py 'pm uninstall com.ipodtvstyle.home'
 ```
 
-> **建议动手前先执行一次** `adb shell dumpsys package | grep -B4 HOME` 把原桌面包名
-> 抄下来，存进手机备忘录。这一步 10 秒，能救命。
+用完 ADB 记得关掉调试，并确认端口真的关了：
+
+```bash
+python3 tools/adb-closed.py 192.168.1.50
+```
 
 ---
 
@@ -191,24 +196,38 @@ adb uninstall <homeApplicationId>
 1. 先查 `ACTION_MAIN` + `CATEGORY_LEANBACK_LAUNCHER`（真正的电视应用）；
 2. 再查 `ACTION_MAIN` + `CATEGORY_LAUNCHER`（普通应用、侧载的手机应用）；
 3. 同包名以 leanback 那条为准，去重；
-4. 两组各自按系统语言排序，电视应用排在前面；
-5. 名字用应用自带的 label（中文应用显示中文），图标用 `getApplicationIcon()`。
+4. 只出现在 `LAUNCHER` 里的系统命名空间条目（`android`、`com.android.*`、
+   `com.google.android.*`）会被跳过——那些通常是设置面板，不是能打开的应用；
+5. 每组按系统语言排序，电视应用在前、普通应用在后；
+6. 信号源 trampoline（`com.coocaa.hdmi1..4`）统一排在**最后**，不会插在应用中间；
+7. 名字用应用自带的 label（中文应用显示中文），图标用 `getApplicationIcon()`。
 
 所以别人装完看到的是**他自己电视上的应用**，作者电视上那 9 个不会再冒出来。
-装好之后又装了新应用：回到桌面（HOME）时会自动比对清单，变了就重建轮播。
+装好之后又装了新应用，或改了 `hidden.txt`：回到桌面（HOME）时会比对一次，变了就重建轮播。
 
-### 想隐藏某个应用
+### 想隐藏某张卡片（不用重新编译）
 
-`CarouselView.java` 里有一个默认为空的名单：
+往应用的私有目录里放一个文本文件，一行一个包名，`#` 开头是注释：
 
-```java
-private static final String[] HIDDEN_PACKAGES = {};
+```bash
+cat > /tmp/hidden.txt <<'EOF'
+# 电视自带的广告入口
+com.example.adbox
+EOF
+TV_HOST=192.168.1.50 tools/venv/bin/python -I tools/tv.py \
+  'mkdir -p /sdcard/Android/data/com.ipodtvstyle.home/files'
+# 私有目录需要 run-as 或 root 才能直接写，最省事的还是用 adb：
+adb push /tmp/hidden.txt /sdcard/hidden.txt
+adb shell run-as com.ipodtvstyle.home cp /sdcard/hidden.txt files/hidden.txt
 ```
 
-把不想看到的包名填进去即可（比如电视自带的某个广告入口）：
+**只在自家电视上用**：`run-as` 只对 debug 签名的包有效，本项目的 release 正是 debug 签名，
+所以能这么写；换签名之后就得先用 root 或者重新编译。
 
-```java
-private static final String[] HIDDEN_PACKAGES = {"com.example.adbox"};
+想一次确认当前名单：
+
+```bash
+adb shell run-as com.ipodtvstyle.home cat files/hidden.txt
 ```
 
 ### 卡片长什么样
@@ -220,6 +239,7 @@ private static final String[] HIDDEN_PACKAGES = {"com.example.adbox"};
 | 底色 | 从图标里采样出来的主色；和图标本身明暗太接近时自动换成浅底或深底，保证 logo 看得见 |
 | 比例 | 按图标原始比例居中，宽度上限 54%，不拉伸；图标本身是整块铺满的方形就直接铺满卡片 |
 | 字体 | 内置衬线子集覆盖得到就用衬线，否则逐字回落到系统黑体 |
+| 日期 | 跟随电视语言：英文 `SUNDAY, NOV 8, 2026`，中文 `2026年11月8日星期日` |
 
 不用再从电视上抠图标、也不用往 `res/` 里放任何图片。
 
@@ -248,7 +268,26 @@ getContentResolver().call(
 
 ---
 
-## 5. 字体（中文衬线）
+## 5. 有些机型不把 HOME 交给第三方桌面
+
+`tools/install.sh` 走的是标准做法：装好 → 校验能启动 → `pm disable-user` 原厂桌面 →
+`cmd package set-home-activity`。这套在绝大多数 Android TV / Google TV 上成立，但**不是所有**：
+
+| 机型 | 现象 | 现在怎么办 |
+|---|---|---|
+| 创维 / 酷开（部分固件） | Home 键和开机路径读固件属性 `persist.service.homepage.*`，每次开机被重写；`pm hide com.tianci.movieplatform` 会卡在开机 logo | 先 `STOCK_LAUNCHER=none`（原厂桌面留着，新桌面当普通应用）；想要 Home 键直达，得借助外部无障碍中继（如 Home on Fire）+ 开机自启，见上游 `docs/devices/skyworth-7t634-p3h.md` |
+| 小米 / 部分 ColorOS TV | 固件只接受白名单包名 | 编译时 `-PlauncherApplicationId=<白名单包名>`，逐机型见 `docs/devices/` |
+| 装了选择器却进不去 | HOME 被多个应用抢，落到了 `android`（选择器） | 先在电视上手动选一次默认桌面，再跑 `install.sh` |
+
+脚本每次都会**先问电视**「HOME 现在归谁」，然后把结论打出来。凡是它认不出的答案，
+它不会猜——停下来让你用 `STOCK_LAUNCHER=` 或 `-StockLauncher` 明确指定。
+
+> 结论：能不能接管 Home 取决于固件，不取决于这个桌面写得好不好。`install.sh` 的职责是
+> **不让一次失败把你困住**：先装、先试启、最后才动原厂桌面，失败就把原厂桌面放回去并写出恢复命令。
+
+---
+
+## 6. 字体（中文衬线）
 
 应用名默认用内置的衬线子集：
 
@@ -273,7 +312,7 @@ Linux 上把 `SOURCE_FONT` 指向任意一个中文衬线字体（思源宋体 /
 
 ---
 
-## 6. 分辨率适配
+## 7. 分辨率适配
 
 设计基准是 **1920×1080**（`DESIGN_W` / `DESIGN_H`），渲染时按等比缩放到实际屏幕
 并居中，所以 1280×720、4K 都能直接用，边缘会留黑边。
@@ -285,7 +324,7 @@ Linux 上把 `SOURCE_FONT` 指向任意一个中文衬线字体（思源宋体 /
 
 ---
 
-## 7. 遥控器按键
+## 8. 遥控器按键
 
 | 按键 | 行为 |
 |---|---|
@@ -298,16 +337,24 @@ Linux 上把 `SOURCE_FONT` 指向任意一个中文衬线字体（思源宋体 /
 
 ---
 
-## 8. 常见坑
+## 9. 常见坑
 
 | 现象 | 原因 / 解法 |
 |---|---|
-| 按 HOME 没有选择器 | 包名不在白名单。回到第 1 节 |
-| 装不上，`UPDATE_INCOMPATIBLE` | 同包名已存在（多半是原厂桌面）。换白名单里的另一个名字，别卸载系统组件 |
-| 启动后白屏/黑屏 | 轮播空的时候会退化成一张“设置”卡片，所以白屏多半是 `homeApplicationId` 不对或 `queries` 被改坏了 |
+| `install.sh` 说连不上电视 | 网络调试没开，或路由器开了客户端隔离。`tools/tv.py --probe` 先单独跑一次，见第 2 节 |
+| 报"no Python environment yet" | 先 `python3 -m venv tools/venv && tools/venv/bin/pip install -r tools/requirements.txt` |
+| 报 `INSTALL_FAILED_USER_RESTRICTED` | 电视屏幕上有个"继续安装"确认框，超时或选了拒绝就变成这个错误。在电视上点继续，重跑 |
+| 报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | 同包名已存在且签名不同——通常是**别人电脑上编译的同一个包**。先把 HOME 还给原厂桌面，再 `pm uninstall` 掉旧包，然后重跑 |
+| 报 `INSTALL_FAILED_OLDER_SDK` | 电视低于 Android 8.0（minSdk 26）。脚本在编译前就会拦住；如果用 `SKIP_BUILD=1` 跳过了预检才会走到这一步 |
+| 装好了但 HOME 没变 | 固件白名单或厂商 Home 逻辑。脚本会打印"Home resolves to …"，按第 1 节和第 5 节处理 |
+| 按 HOME 没有选择器 | 部分固件不弹选择器，只认 `set-home-activity` —— 这也正是脚本在做的事 |
+| 第一次按 HOME 慢 / 白一下 | 已修：首帧只烘 5 张卡，其余在首帧之后分批预热；窗口背景跟随深浅主题。仍是低端机的话把 `WARMUP_CHUNK` 调小 |
 | 切换掉帧 | 关掉 `GEAR_SUPERSAMPLE=4` 那种高开销烘焙，或者把 `ANIMATION_MS` 调长 |
-| 应用列表和电视上不一致 | 被 `HIDDEN_PACKAGES` 挡掉的不会出现；装完新应用回一次 HOME 才会刷新 |
+| 应用列表和电视上不一致 | 被 `hidden.txt` / `HIDDEN_PACKAGES` 挡掉的不会出现；装完新应用或改完 `hidden.txt`，回一次 HOME 才会刷新 |
+| 轮播里混进了系统设置面板 | 只出现在 `LAUNCHER` 里的 `com.android.*` / `com.google.android.*` 已被默认跳过；要彻底去掉就写进 `hidden.txt` |
 | HDMI 卡片切错输入 | 只对 `com.coocaa.hdmiN` 这种 trampoline 生效；自定义包名要在 `hdmiSourceIndex()` 里补规则 |
-| 中文名叫回黑体 | 衬线子集没覆盖这个字，属于正常回落；想统一衬线见第 5 节 |
-| 电视重启后又回原厂桌面 | 有些固件会在开机时重置 HOME 角色，重新 `set-home-activity` 或停用原桌面 |
-| OTA 升级后桌面被换回去 | 同上看，重新设一次 |
+| 中文名叫回黑体 | 衬线子集没覆盖这个字，属于正常回落；想统一衬线见第 6 节 |
+| 日期变成英文 | 日期跟随电视语言；电视是英文系统就显示英文。想强制中文要改系统语言 |
+| 电视重启后又回原厂桌面 | 有些固件会在开机时重置 HOME 角色，重跑 `install.sh`（`SKIP_BUILD=1`），或见第 5 节 |
+| OTA 升级后桌面被换回去 | 同上，升级后重跑一次 |
+

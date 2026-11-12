@@ -81,7 +81,12 @@ warps prefabbed textures into projected quads.
 |---|---|
 | TV | Android TV / Google TV, **Android 8.0 (API 26)** or newer — see the [457-model list](docs/MODELS.md) |
 | ADB | enabled over Wi-Fi (Developer options → Network debugging) |
-| Build | JDK 17 + Android SDK 34, or just open `launcher/` in Android Studio |
+| Computer | **Python 3**, **JDK 17–22**, **Android SDK platform 34** + build-tools 34 |
+| OS | macOS, Linux, Windows (Git Bash or the PowerShell scripts) |
+
+No prebuilt APK is published. The launcher is signed with the build machine's debug key and
+sideloaded, so build it where you will install it — another computer's build will not install
+over it (same package, different key).
 
 ---
 
@@ -126,25 +131,28 @@ TV IP: ___
 
 Steps:
 1. Clone the repository above and open the project locally
-2. Connect to the TV: adb connect the IP above, confirm `adb devices` lists it as "device"
-3. Follow docs/ADAPT.md in the repo exactly. Do not invent steps
-4. Before changing anything, record the stock launcher for later rollback:
-   adb shell cmd package resolve-activity -c android.intent.category.HOME
-5. Work out this TV's HOME policy and tell me the conclusion before continuing
-6. Edit homeApplicationId in launcher/gradle.properties
-7. Build and install: run ./tools/build.sh, then ./tools/install.sh with the IP
-   above, and set it as the default home screen
-8. Hand me the complete restore command at the end
+2. Read docs/ADAPT.md in the repo and follow it exactly. Do not invent steps
+3. Set up the connection layer once:
+   python3 -m venv tools/venv && tools/venv/bin/pip install -r tools/requirements.txt
+   (Windows: python -m venv tools\venv, then tools\venv\Scripts\python.exe -m pip install -r tools\requirements.txt)
+4. Tell me what the TV says it is: TV_HOST=___ tools/venv/bin/python -I tools/tv.py --probe
+5. Build and install in one step: TV_HOST=___ tools/install.sh
+   It installs, starts the launcher, checks it came up, and only then takes the Home key.
+   If it stops, read its message and tell me - do not work around it.
+6. Hand me the restore commands it prints at the end
 
 Rules:
 - Never uninstall system apps, never root, do not run adb kill-server
-- On INSTALL_FAILED_UPDATE_INCOMPATIBLE, stop and tell me instead of forcing it
+- If it reports INSTALL_FAILED_UPDATE_INCOMPATIBLE, stop and tell me instead of forcing it
+- Do not set STOCK_LAUNCHER= yourself; let the script ask the TV
 ```
 
-When it finishes, press **HOME** on the remote and pick iPodTVStyle.
+When it finishes, press **HOME** on the remote.
 
-If it never shows up in the desktop picker, that model has an allow-list restriction —
-see [docs/ADAPT.md](docs/ADAPT.md) §1.
+If the launcher is installed but HOME does not land on it, the script says so and puts the
+stock launcher back. Some Coocaa/Skyworth firmware hands HOME to a package on its own
+allow-list, or to vendor properties that a third-party launcher cannot set — see
+[docs/ADAPT.md](docs/ADAPT.md) §4 and §5.
 
 ---
 
@@ -153,13 +161,15 @@ see [docs/ADAPT.md](docs/ADAPT.md) §1.
 | What | Where |
 |---|---|
 | Apps in the carousel | nothing to edit — read from `PackageManager` at startup |
-| Hide an app from the ring | `CarouselView.java` → `HIDDEN_PACKAGES` (empty by default) |
-| Home package the TV expects | `launcher/gradle.properties` → `homeApplicationId` |
-| Clock font, date format | same Java file → `drawHeader()` |
+| Hide a tile | `<app files dir>/hidden.txt`, one package name per line — no rebuild (`adb push`) |
+| Package the TV expects (allow-list firmware) | `BUILD_ARGS=-PlauncherApplicationId=<package> TV_HOST=… tools/install.sh`, per model in `docs/devices/` |
+| Clock font, date format | `CarouselView.java` → `drawHeader()` (the date follows the TV's language) |
 | Animation length, tilt, spacing | same Java file → constants block at the top |
 | Serif face for app names | `assets/app_name_serif.ttf` + `tools/make-font-subset.py` (missing glyphs fall back to the system face) |
 
-Full walkthrough in **[docs/ADAPT.md](docs/ADAPT.md)**.
+Full walkthrough in **[docs/ADAPT.md](docs/ADAPT.md)**. The connection layer —
+`tools/tv.py`, `b64push.py`, the install order and the rollback — is vendored from
+[CleanYourTV](https://github.com/Gathin23/cleanyourtv) (MIT); see [tools/VENDORED.md](tools/VENDORED.md).
 
 ---
 

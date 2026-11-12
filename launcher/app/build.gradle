@@ -2,10 +2,16 @@ plugins {
     id 'com.android.application'
 }
 
-// The package name your TV's firmware expects for its Home app. See docs/ADAPT.md:
-// on Skyworth / SkyOS this must stay com.coocaa.tvhome or the system will refuse to
-// treat the launcher as the default home screen.
-def homeAppId = project.findProperty('homeApplicationId') ?: 'com.ipodtvstyle.home'
+// The package name the launcher installs as. Neutral by default; a firmware with a package-name
+// HOME allowlist needs a specific one, and that is an explicit, per-build opt-in (docs/ADAPT.md §4):
+//
+//   tools/build.sh -PlauncherApplicationId=<package>
+//
+// `homeApplicationId` is the old property name and is still honoured, so an existing local build
+// keeps working.
+def homeAppId = project.findProperty('launcherApplicationId')
+        ?: project.findProperty('homeApplicationId')
+        ?: 'com.ipodtvstyle.home'
 
 android {
     namespace 'com.yesy.carouselhome'
@@ -15,12 +21,15 @@ android {
         applicationId homeAppId
         minSdk 26
         targetSdk 34
-        versionCode 34
-        versionName '1.0.3'
+        versionCode 35
+        versionName '1.1.0'
     }
 
     buildTypes {
         release {
+            // Sideloaded over ADB, never published anywhere: signing with the debug key means a
+            // rebuild installs over the previous build. A different computer's build will NOT
+            // install over it - same package, different key - and that is the trade-off.
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

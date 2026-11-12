@@ -1,6 +1,8 @@
 package com.gathin.tvhome;
 
 import android.app.Activity;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
@@ -16,6 +18,12 @@ public final class MainActivity extends Activity {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         hideSystemUi();
+
+        // The window background is what shows before the first frame, and it fills the bars on a
+        // screen that is not 16:9. The theme puts white there; in dark mode that flashed white at
+        // every cold start, so it follows the saved theme instead.
+        boolean dark = getSharedPreferences("carousel-home", MODE_PRIVATE).getBoolean("dark", false);
+        getWindow().setBackgroundDrawable(new ColorDrawable(dark ? Color.BLACK : 0xffffffff));
 
         carouselView = new CarouselView(this);
         carouselView.setLayerType(View.LAYER_TYPE_HARDWARE, null);

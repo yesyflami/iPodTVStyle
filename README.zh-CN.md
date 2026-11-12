@@ -68,7 +68,11 @@
 |---|---|
 | 电视 | Android TV / Google TV，**Android 8.0（API 26）** 及以上 —— 先在 [457 个机型的清单](docs/MODELS.md) 里查你这台 |
 | ADB | 已开启网络调试（设置 → 开发者选项） |
-| 构建 | JDK 17 + Android SDK 34，或直接用 Android Studio 打开 `launcher/` |
+| 电脑 | **Python 3**、**JDK 17–22**、**Android SDK platform 34** + build-tools 34 |
+| 系统 | macOS / Linux / Windows（Git Bash 或 PowerShell 脚本） |
+
+仓库**不提供预编译 APK**。安装包用编译机的 debug key 签名后侧载，所以请在你自己的电脑上编译
+再装到电视——别人编译的同名包签名不同，无法覆盖安装。
 
 ---
 
@@ -101,7 +105,7 @@
 确认电脑与电视连接在**同一个 Wi-Fi** 下。
 
 将项目地址连同下面这段指令一起发给助手，**只需替换其中的 IP 地址**——
-助手会自动克隆仓库、编译、安装并设为默认桌面。过程中电视若弹出「允许调试」，
+助手会自动克隆仓库、准备连接层、编译安装并接管 HOME。过程中电视若弹出「允许调试」，
 用遥控器确认即可。
 
 ```text
@@ -112,27 +116,29 @@
 
 操作步骤：
 1. 克隆上面的仓库，并在本地打开这个项目
-2. 连接电视：adb connect 上面填的 IP，确认 adb devices 中显示为 device
-3. 严格按仓库中的 docs/ADAPT.md 执行，不要自行发明步骤
-4. 动手之前，先记录原厂桌面，用于日后的还原：
-   adb shell cmd package resolve-activity -c android.intent.category.HOME
-5. 判断这台电视的 HOME 策略，把结论告诉我以后再继续
-6. 修改 launcher/gradle.properties 中的 homeApplicationId
-7. 编译并安装：运行 ./tools/build.sh，再用 ./tools/install.sh 传入上面那个 IP，
-   安装完成后设为默认桌面
-8. 最后把完整的还原命令交给我
+2. 先读仓库里的 docs/ADAPT.md，严格按它的流程执行，不要自行发明步骤
+3. 准备连接层（只需一次）：
+   python3 -m venv tools/venv && tools/venv/bin/pip install -r tools/requirements.txt
+   （Windows：python -m venv tools\venv，然后 tools\venv\Scripts\python.exe -m pip install -r tools\requirements.txt）
+4. 先确认电视认得出：TV_HOST=___ tools/venv/bin/python -I tools/tv.py --probe
+5. 编译并安装：TV_HOST=___ tools/install.sh
+   它会先安装、再启动并校验新桌面确实起来了，最后才把 HOME 交过去。
+   如果它中途停下，把它打印的原因告诉我，不要绕过它继续
+6. 最后把它打印出来的还原命令交给我
 
 注意事项：
 - 不要卸载任何系统应用，不要 root，不要执行 adb kill-server
 - 若出现 INSTALL_FAILED_UPDATE_INCOMPATIBLE，立即停止并告知我，不要强行覆盖
+- 不要自己指定 STOCK_LAUNCHER，让脚本去问电视
 ```
 
 填好后第一行应该是 `电视 IP：192.168.1.50` 这样——**全文只有这一处需要改**，其余原样发送。
 
-安装完成后按遥控器 **HOME 键**，选择 iPodTVStyle，即可进入新桌面。
+安装完成后按遥控器 **HOME 键**，应当直接进入新桌面。
 
-若它没有出现在桌面选择器中，说明该机型存在白名单限制，请查看
-[docs/ADAPT.md](docs/ADAPT.md) 第 1 节。
+如果装上了但 HOME 没有落到新桌面上，脚本会明确告诉你并把原厂桌面放回去。
+原因通常是这台机型有白名单，或者把 HOME 交给固件自己的属性（部分创维/酷开固件），
+见 [docs/ADAPT.md](docs/ADAPT.md) 第 4、5 节。
 
 ---
 
@@ -141,13 +147,14 @@
 | 想改什么 | 改哪里 |
 |---|---|
 | 轮播里的应用 | 不用改 —— 启动时从 `PackageManager` 读 |
-| 想隐藏某个应用 | `CarouselView.java` → `HIDDEN_PACKAGES`（默认为空） |
-| 电视认的 HOME 包名 | `launcher/gradle.properties` → `homeApplicationId` |
-| 时钟字体、日期格式 | 同一文件 → `drawHeader()` |
+| 想隐藏某张卡片 | `<应用私有目录>/hidden.txt`，一行一个包名，不用重新编译（`adb push` 即可） |
+| 电视认的包名（白名单机型） | `BUILD_ARGS=-PlauncherApplicationId=<包名> TV_HOST=… tools/install.sh`，逐机型说明在 `docs/devices/` |
+| 时钟字体、日期格式 | `CarouselView.java` → `drawHeader()`（日期跟随电视语言） |
 | 动画时长、倾斜角度、卡片间距 | 同一文件 → 顶部常量区 |
 | 应用名衬线字体 | `assets/app_name_serif.ttf` + `tools/make-font-subset.py`（缺字自动回落系统字体） |
 
-完整流程见 **[docs/ADAPT.md](docs/ADAPT.md)**。
+完整流程见 **[docs/ADAPT.md](docs/ADAPT.md)**。连接层（`tools/tv.py`、`b64push.py`、安装顺序与回滚）
+来自 [CleanYourTV](https://github.com/Gathin23/cleanyourtv)（MIT），见 [tools/VENDORED.md](tools/VENDORED.md)。
 
 ---
 

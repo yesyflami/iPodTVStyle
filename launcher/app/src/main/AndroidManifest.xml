@@ -27,7 +27,7 @@
         android:allowBackup="false"
         android:hardwareAccelerated="true"
         android:icon="@drawable/ic_home"
-        android:label="Carousel Home"
+        android:label="iPodTVStyle"
         android:theme="@style/AppTheme">
 
         <activity
