@@ -686,13 +686,13 @@ public final class CarouselView extends View {
 
         Bitmap card = Bitmap.createBitmap(TEXTURE, TEXTURE, Bitmap.Config.ARGB_8888);
         Canvas textureCanvas = new Canvas(card);
-        Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
-        shadow.setColor(color);
-        shadow.setShadowLayer(30f, 0f, 15f, 0x66000000);
+        // No drop shadow under the card: the floor reflection already seats it, and the shadow
+        // band read as a grey stripe along the bottom edge.
+        Paint plate = new Paint(Paint.ANTI_ALIAS_FLAG);
+        plate.setColor(color);
         RectF faceBounds = new RectF(TEXTURE_PAD, TEXTURE_PAD,
                 TEXTURE_PAD + CARD, TEXTURE_PAD + CARD);
-        textureCanvas.drawRoundRect(faceBounds, 7f, 7f, shadow);
-        shadow.clearShadowLayer();
+        textureCanvas.drawRoundRect(faceBounds, 7f, 7f, plate);
         bakePaint.setAlpha(255);
         textureCanvas.drawBitmap(face, TEXTURE_PAD, TEXTURE_PAD, bakePaint);
 
