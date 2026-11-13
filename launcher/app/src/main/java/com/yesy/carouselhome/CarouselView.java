@@ -399,9 +399,10 @@ public final class CarouselView extends View {
 
     /** What one bake needs to know about an icon, measured in a single pass over its pixels. */
     private static final class IconStats {
-        int color;          // plate colour
-        Bitmap logo;        // the icon with its own background knocked out, or null
-        boolean logoIsGlyph; // true when the background was removed and a glyph is left
+        int color;           // plate colour: the artwork's own background
+        Bitmap logo;         // the figure cut out of the artwork, or null
+        boolean logoIsGlyph; // true when a figure was separated and the plate should show
+        boolean bleed;       // true when the artwork has no separable figure
     }
 
     /**
@@ -412,74 +413,142 @@ public final class CarouselView extends View {
     private static IconStats analyze(Bitmap icon) {
         IconStats stats = new IconStats();
         stats.color = 0xfff4f2ee;
-        if (icon == null) {
-            stats.color = 0xff111111; // dark plate so the fallback label reads
-            return stats;
-        }
+        if (icon == null) return stats;
 
         int[] pixels = new int[CARD * CARD];
         icon.getPixels(pixels, 0, CARD, 0, 0, CARD, CARD);
 
-        // 1 · What colour is the icon's own backdrop? Sample the border ring, which is background
-        //     on every well-formed launcher icon.
-        int[] ring = borderRing(pixels);
-        int backdrop = median(ring);
-        // A knockout is only safe when the border really is one flat colour. An icon whose edge
-        // already carries artwork must be left whole -- cutting into it is what made Mango TV and
-        // the 云视听 tile come out half-drawn.
-        int ringSolid = 0;
-        int ringOpaque = 0;
-        for (int argb : ring) {
-            if ((argb >>> 24) < 200) continue;
-            ringOpaque++;
-            if (near(argb, backdrop, 26)) ringSolid++;
-        }
-        float ringUniformity = ringOpaque == 0 ? 0f : ringSolid / (float) ringOpaque;
-        int backdropHits = 0;
-        int opaque = 0;
-        for (int argb : pixels) {
-            if ((argb >>> 24) < 24) continue;
-            opaque++;
-            if (near(argb, backdrop, 46)) backdropHits++;
-        }
-        float coverage = opaque == 0 ? 0f : backdropHits / (float) opaque;
-
-        // 2 · When the backdrop dominates, the icon is a logo printed on a plate -- exactly the
-        //     material the reference ring is made of. Knock it out and keep the plate colour.
-        if (coverage >= .38f) {
-            Bitmap glyph = knockOut(pixels, backdrop, 45);
-            if (glyph != null) {
-                stats.logo = glyph;
-                stats.logoIsGlyph = true;
-                stats.color = opaquePlate(backdrop, glyph);
-                return stats;
+        // Grow a region from the four corners. On any launcher icon that region is the icon's own
+        // background -- the rounded plate it was drawn on -- so everything the flood cannot reach is
+        // the figure in the middle. This is what removes the rounded edge: the plate the icon was
+        // drawn on is thrown away and replaced with a flat field of its own colour, edge to edge.
+        boolean[] inside = floodFromCorners(pixels, 34);
+        int flooded = 0;
+        int[] background = new int[CARD * CARD];
+        int at = 0;
+        int minX = CARD, minY = CARD, maxX = -1, maxY = -1;
+        int[] figure = new int[CARD * CARD];
+        int figureAt = 0;
+        for (int y = 0; y < CARD; y++) {
+            int row = y * CARD;
+            for (int x = 0; x < CARD; x++) {
+                int argb = pixels[row + x];
+                if (inside[row + x]) {
+                    flooded++;
+                    background[at++] = argb;
+                    continue;
+                }
+                // An opaque pixel the flood did not reach belongs to the figure.
+                if ((argb >>> 24) >= 24) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+                figure[figureAt++] = argb;
             }
         }
 
-        // 3 · No single backdrop: the artwork is the brand. Plate takes the most vivid frequent
-        //     colour, not the most frequent one -- a mostly-white icon is common and white is not
-        //     a plate you can see.
-        int vivid = vividColour(pixels);
-
-        long sum = 0;
-        int counted = 0;
-        for (int argb : pixels) {
-            if ((argb >>> 24) < 200) continue;
-            sum += luma(argb);
-            counted++;
-        }
-        int glyphLuma = counted == 0 ? 128 : (int) (sum / counted);
-
-        // The artwork is going to be drawn at full size over this plate, so the plate's only job is
-        // to show through the icon's transparent rounded corners. It must therefore be the colour
-        // those corners sit on -- the icon's own edge -- or the corners come out as dark notches,
-        // which is what put black bars on the Mango TV card.
-        int plate = backdrop;
-        if (vivid != 0 && Math.abs(luma(backdrop) - luma(vivid)) > 22) {
-            plate = vivid;   // the edge is neutral but the artwork has a colour of its own
-        }
+        int plate = at > 0 ? median(java.util.Arrays.copyOf(background, at)) : 0xfff4f2ee;
         stats.color = plate;
+
+        // The flood has to have eaten a real share of the artwork for the figure to mean anything.
+        // Below that, the "figure" is the whole picture and cutting it out would just shred it.
+        float eaten = flooded / (float) (CARD * CARD);
+        if (eaten < .22f || maxX < 0) {
+            stats.bleed = true;
+            return stats;
+        }
+        if (maxX - minX + 1 > CARD * .94f && maxY - minY + 1 > CARD * .94f) {
+            stats.bleed = true;
+            return stats;
+        }
+
+        // Crop the figure to its own bounds so it lands centred instead of wherever it happened to
+        // sit inside the icon.
+        int pad = CARD / 40;
+        minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+        maxX = Math.min(CARD - 1, maxX + pad); maxY = Math.min(CARD - 1, maxY + pad);
+        int width = maxX - minX + 1;
+        int height = maxY - minY + 1;
+        if (width < CARD / 12 || height < CARD / 12) {
+            stats.bleed = true;
+            return stats;
+        }
+        int[] cropped = new int[width * height];
+        for (int y = 0; y < height; y++) {
+            System.arraycopy(pixels, (minY + y) * CARD + minX, cropped, y * width, width);
+            // Carry the flood mask across too, so background-coloured specks inside the figure's
+            // bounding box do not travel with it.
+            for (int x = 0; x < width; x++) {
+                if (inside[(minY + y) * CARD + minX + x]) cropped[y * width + x] = 0;
+            }
+        }
+        Bitmap glyph = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        glyph.setPixels(cropped, 0, width, 0, 0, width, height);
+        stats.logo = glyph;
+        stats.logoIsGlyph = true;
         return stats;
+    }
+
+    /**
+     * Mark every pixel connected to a corner that stays within {@code tolerance} of that corner's
+     * colour. Seeds are the four corners plus the middle of each edge, so the region wraps all the
+     * way around the icon even when one corner is damaged.
+     */
+    private static boolean[] floodFromCorners(int[] pixels, int tolerance) {
+        boolean[] visited = new boolean[CARD * CARD];
+        int[] queue = new int[CARD * CARD];
+        int head = 0;
+        int tail = 0;
+        int[] seeds = {
+                0, CARD - 1, (CARD - 1) * CARD, CARD * CARD - 1,
+                CARD / 2, (CARD / 2) * CARD, CARD - 1 + (CARD / 2) * CARD, (CARD - 1) * CARD + CARD / 2
+        };
+        for (int seed : seeds) {
+            if (visited[seed]) continue;
+            int reference = pixels[seed];
+            if ((reference >>> 24) < 24) {
+                // Transparent corner: treat the transparent area as background and let the flood
+                // spread through it.
+                visited[seed] = true;
+                queue[tail++] = seed;
+                continue;
+            }
+            if (visited[seed]) continue;
+            visited[seed] = true;
+            queue[tail++] = seed;
+            int baseR = (reference >> 16) & 0xff;
+            int baseG = (reference >> 8) & 0xff;
+            int baseB = reference & 0xff;
+            while (head < tail) {
+                int current = queue[head++];
+                int x = current % CARD;
+                int y = current / CARD;
+                if (x > 0) tail = floodVisit(pixels, visited, queue, tail, current - 1, baseR, baseG, baseB, tolerance);
+                if (x < CARD - 1) tail = floodVisit(pixels, visited, queue, tail, current + 1, baseR, baseG, baseB, tolerance);
+                if (y > 0) tail = floodVisit(pixels, visited, queue, tail, current - CARD, baseR, baseG, baseB, tolerance);
+                if (y < CARD - 1) tail = floodVisit(pixels, visited, queue, tail, current + CARD, baseR, baseG, baseB, tolerance);
+            }
+        }
+        return visited;
+    }
+
+    private static int floodVisit(int[] pixels, boolean[] visited, int[] queue, int tail, int at,
+                                  int baseR, int baseG, int baseB, int tolerance) {
+        if (visited[at]) return tail;
+        int argb = pixels[at];
+        if ((argb >>> 24) < 24) {
+            visited[at] = true;
+            queue[tail] = at;
+            return tail + 1;
+        }
+        if (Math.abs(((argb >> 16) & 0xff) - baseR) > tolerance) return tail;
+        if (Math.abs(((argb >> 8) & 0xff) - baseG) > tolerance) return tail;
+        if (Math.abs((argb & 0xff) - baseB) > tolerance) return tail;
+        visited[at] = true;
+        queue[tail] = at;
+        return tail + 1;
     }
 
     /** The four edges of the card, used to guess an icon's own background colour. */
@@ -728,7 +797,7 @@ public final class CarouselView extends View {
         canvas.drawColor(color);
         Paint bakePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         if (stats != null && stats.logoIsGlyph && stats.logo != null) {
-            // Album cover: a separated logo sits inside the plate.
+            // The figure sits on a flat field of the colour it was drawn on.
             Bitmap glyph = stats.logo;
             float maxWidth = CARD * (LOGO_WIDTH + .26f);
             float maxHeight = CARD * .62f;
@@ -739,10 +808,13 @@ public final class CarouselView extends View {
                     (CARD + width) / 2f, (CARD + height) / 2f);
             canvas.drawBitmap(glyph, null, target, bakePaint);
         } else if (icon != null) {
-            // Full-bleed tile: the artwork has no separable logo, so it *is* the card. Shrinking it
-            // would put a stamp on a plate; filling the card reads as a deliberate design.
-            canvas.drawBitmap(icon, null,
-                    new RectF(0f, 0f, CARD, CARD), bakePaint);
+            // No separable figure: scale the artwork past the card so its rounded corners fall
+            // outside the edge and get clipped away. The card then shows the artwork's flat middle,
+            // which has no rounded corner of its own to show.
+            float overscale = 1.16f;
+            float size = CARD * overscale;
+            float left = (CARD - size) / 2f;
+            canvas.drawBitmap(icon, null, new RectF(left, left, left + size, left + size), bakePaint);
         } else {
             drawFallbackLabel(canvas, app);
         }
