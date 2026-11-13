@@ -124,44 +124,8 @@ single `___` — put your IP there and send the rest unchanged. The agent clones
 home screen; if the TV asks to allow debugging, confirm with the remote.
 
 ```text
-Please put iPodTVStyle on my TV. Your job is to get it installed and working, not to relay
-error messages to me.
-
-Repository: https://github.com/yesyflami/iPodTVStyle
-TV IP: ___
-
-1. Clone the repository and enter it.
-   If cloning fails with "Failed to connect to 127.0.0.1", that is a proxy environment variable:
-     HTTPS_PROXY= HTTP_PROXY= git clone https://github.com/yesyflami/iPodTVStyle.git
-
-2. Run tools/install.sh <the IP above>  (Windows: tools\install.ps1).
-   It needs Python 3 only -- no JDK, no Android SDK, no adb. Do not install those and do not
-   run tools/build.sh.
-
-3. The TV will ask whether to allow the install. That dialog can only be answered on the TV.
-   Tell me to look at the screen at that point, then wait 10 seconds and check again.
-
-When something fails, deal with it yourself:
-
-| Symptom | What to do |
-|---|---|
-| INSTALL_FAILED_USER_RESTRICTED | Run the script once more. If it fails again, ask me whether I pressed allow and whether unknown sources is on |
-| "No activity found" | Normal on firmware that does not use the standard HOME category. Continue |
-| "Home key did not move here" | This TV only accepts an allow-listed package name. Tell me that one line, not the whole log |
-| "could not reach" | Check the TV is on, on the same Wi-Fi, with network debugging enabled |
-| Python errors | On Windows, tick "Add python.exe to PATH" during setup |
-| Anything else | Read docs/ADAPT.md and docs/FAQ.md first |
-
-Rules:
-- Run the script once per attempt. Do not retry more than three times -- each run puts another
-  dialog on the TV.
-- Do not change anything under launcher/.
-- Do not uninstall other apps and do not root the TV.
-- On failure, do not paste raw logs. One sentence: which step, and what I need to do on the TV.
-- On success, just tell me it worked.
-
-Done means: pressing HOME on the remote opens iPodTVStyle. If HOME still goes to the stock
-launcher, it is not done.
+Follow the quick start in https://github.com/yesyflami/iPodTVStyle and put its launcher on my
+TV (IP: ___). Solve whatever comes up from the repo's own docs, and tell me when it is working.
 ```
 
 When it finishes, press **HOME** on the remote.

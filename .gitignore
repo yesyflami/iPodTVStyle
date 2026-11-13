@@ -9,6 +9,8 @@ captures/
 .externalNativeBuild/
 .cxx/
 *.apk
+# ...except the ones the installer ships; without these a clone cannot install anything.
+!prebuilt/*.apk
 *.aab
 *.keystore
 !debug.keystore

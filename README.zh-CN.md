@@ -107,48 +107,23 @@
 把下面这段直接发给助手。**全文只有一处要你改**：`电视 IP：___` 那行，把 `___` 换成电视的 IP，其余原样发过去。
 
 ```text
-请帮我把我的电视换成 iPodTVStyle 桌面。你的任务是把它装到能用为止，不是把报错转给我。
-
-项目地址：https://github.com/yesyflami/iPodTVStyle
-电视 IP：___
-
-一、做什么
-
-1. 克隆仓库并进入目录。
-   如果报 "Failed to connect to 127.0.0.1" ，是代理环境变量问题，用这个重试：
-     HTTPS_PROXY= HTTP_PROXY= git clone https://github.com/yesyflami/iPodTVStyle.git
-
-2. 执行 tools/install.sh <上面那个 IP>（Windows 用 tools\install.ps1）。
-   脚本只需要 Python 3，不需要 JDK、Android SDK、adb，不要自己装这些，
-   也不要跑 tools/build.sh。
-
-3. 安装过程中电视会弹「是否允许安装」。这是系统的确认框，脚本绕不过去，只能人去按。
-   执行到这一步时提醒我看电视，等 10 秒再确认一次结果。
-
-二、遇到这些情况，你自己处理，不要直接发给我
-
-| 现象 | 你该做什么 |
-|---|---|
-| 报 INSTALL_FAILED_USER_RESTRICTED | 最多再跑一次脚本。还失败就问我在电视上点了没、未知来源开了没 |
-| 报 "No activity found" | 这个固件不用标准 HOME 分类，是正常的，继续 |
-| 报 "Home key did not move here" | 说明这台电视认白名单包名。直接告诉我这一句，不用贴全文 |
-| 报 "could not reach" | 确认电视开着、和电脑同一个 WiFi、网络调试打开 |
-| Python 相关报错 | Windows 装 Python 时勾 "Add python.exe to PATH" |
-| 其它 | 你自己先读 docs/ADAPT.md 和 docs/FAQ.md 找答案 |
-
-三、规则
-
-- 一次只跑一遍脚本。不要连续重跑超过 3 次，每次重跑都会在电视上弹一次窗。
-- 不要修改 launcher/ 下的任何前端代码。
-- 不要卸载电视上的其它应用，不要 root。
-- 失败时不要贴大段原始日志。用一句话告诉我：卡在第几步、需要我在电视上做什么。
-- 成功时告诉我结果就行，不用复述脚本输出。
-
-四、验收
-
-装好后按电视遥控器的 HOME 键，应该直接进 iPodTVStyle（卡片式应用列表）。
-如果按 HOME 还是回原厂桌面，就是没成功，告诉我。
+请按 https://github.com/yesyflami/iPodTVStyle 里的快速开始，把我的电视（IP：___）
+换成它的桌面。遇到问题按仓库里的文档自己解决，装好了告诉我。
 ```
+
+### 助手遇到问题怎么办
+
+仓库里已经写好了，不需要你转述。常见情况对照：
+
+| 现象 | 处理 |
+|---|---|
+| `Failed to connect to 127.0.0.1` | 代理环境变量问题，用 `HTTPS_PROXY= HTTP_PROXY= git clone ...` |
+| `INSTALL_FAILED_USER_RESTRICTED` | 电视的安装确认没被按，或未知来源没开；最多重跑一次脚本 |
+| `No activity found` | 该固件不用标准 HOME 分类，属正常，继续 |
+| `Home key did not move here` | 这台电视认白名单包名，换下一个变体 |
+| `could not reach` | 电视没开、不同网段、或网络调试关着 |
+
+脚本只会重试一次 —— 每次 `pm install` 都会在电视上弹一个窗，重试太多次只会刷屏。
 
 **装的时候盯着电视**：电视会弹窗问是否允许安装，必须用遥控器点「允许」，几秒内不点就自动取消。
 这一步电脑代替不了，任何工具都代替不了。
