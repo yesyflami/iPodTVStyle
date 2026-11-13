@@ -104,9 +104,7 @@
 
 确认电脑与电视连接在**同一个 Wi-Fi** 下。
 
-将项目地址连同下面这段指令一起发给助手，**只需替换其中的 IP 地址**——
-助手会自动克隆仓库、准备连接层、编译安装并接管 HOME。过程中电视若弹出「允许调试」，
-用遥控器确认即可。
+把下面这段直接发给助手，**只需要改里面的 IP**：
 
 ```text
 请帮我把我的电视换成 iPodTVStyle 桌面。
@@ -115,22 +113,21 @@
 电视 IP：___
 
 操作步骤：
-1. 克隆上面的仓库，并在本地打开这个项目
-2. 先读仓库里的 docs/ADAPT.md，严格按它的流程执行，不要自行发明步骤
-3. 准备连接层（只需一次）：
-   python3 -m venv tools/venv && tools/venv/bin/pip install -r tools/requirements.txt
-   （Windows：python -m venv tools\venv，然后 tools\venv\Scripts\python.exe -m pip install -r tools\requirements.txt）
-4. 先确认电视认得出：TV_HOST=___ tools/venv/bin/python -I tools/tv.py --probe
-5. 编译并安装：TV_HOST=___ tools/install.sh
-   它会先安装、再启动并校验新桌面确实起来了，最后才把 HOME 交过去。
-   如果它中途停下，把它打印的原因告诉我，不要绕过它继续
-6. 最后把它打印出来的还原命令交给我
+1. 克隆仓库并进入目录
+2. 执行：tools/install.sh ___
+   （Windows：powershell -ExecutionPolicy Bypass -File tools\install.ps1 ___）
+3. 把它打印的结果原样告诉我
 
 注意事项：
-- 不要卸载任何系统应用，不要 root，不要执行 adb kill-server
-- 若出现 INSTALL_FAILED_UPDATE_INCOMPATIBLE，立即停止并告知我，不要强行覆盖
-- 不要自己指定 STOCK_LAUNCHER，让脚本去问电视
+- 不要编译，不要装 JDK / Android SDK，安装包已经在仓库的 prebuilt/ 里
+- 不要卸载任何系统应用，不要 root
+- 如果脚本报错，把完整报错发给我，不要自己绕过
 ```
+
+电脑上唯一需要的前置条件是 **Python 3**（Mac 和 Windows 都自带安装方式）。
+第一次运行会花一分钟装一个小的 Python 环境，之后就是秒级。
+不需要 JDK，不需要 Android SDK，不需要 adb。
+
 
 填好后第一行应该是 `电视 IP：192.168.1.50` 这样——**全文只有这一处需要改**，其余原样发送。
 

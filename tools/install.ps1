@@ -1,207 +1,166 @@
-# Install the launcher on the TV and hand it the Home key - or put the stock launcher back.
-# PowerShell twin of tools/install.sh.
+# Install iPodTVStyle on a TV. Needs nothing but Python 3 on the computer and a TV on the same
+# network -- no JDK, no Android SDK, no adb, no Gradle. The APK is prebuilt in prebuilt\.
 #
-#   python -m venv tools\venv; tools\venv\Scripts\python.exe -m pip install -r tools\requirements.txt
-#   powershell -ExecutionPolicy Bypass -File tools\install.ps1 -TvHost 192.168.1.50
+#   powershell -ExecutionPolicy Bypass -File tools\install.ps1 192.168.1.50
 #
-#   -SkipBuild                 install the APK that is already built
-#   -LauncherApplicationId <p> package name to build as, for a firmware with a HOME allowlist
-#   -AppId <package>           when the APK cannot name itself
-#   -StockLauncher <package>   the launcher to disable (default: ask the TV, only a known one counts)
-#   -StockLauncher none        keep the stock launcher and install ours as an ordinary app
+#   ... tools\install.ps1 192.168.1.50 -Uninstall
+#
+# It works through the APK variants in prebuilt\ until the TV accepts one as Home: firmware that
+# only hands Home to a package name on its own allow-list refuses the neutral name and accepts
+# the vendor one. Nothing is disabled; the stock launcher keeps working.
 param(
-    [string]$TvHost = $env:TV_HOST,
-    [switch]$SkipBuild,
-    [string]$LauncherApplicationId = '',
-    [string]$AppId = '',
-    [string]$StockLauncher = '',
-    [string]$MainActivity = 'com.gathin.tvhome.MainActivity'
+    [Parameter(Position = 0)][string]$TvHost = $env:TV_HOST,
+    [switch]$Uninstall
 )
+
 $ErrorActionPreference = 'Stop'
-$root = (Join-Path $PSScriptRoot '..' | Resolve-Path).Path
-$tools = Join-Path $root 'tools'
-$python = Join-Path $tools 'venv\Scripts\python.exe'
-$tvpy = Join-Path $tools 'tv.py'
-$apk = Join-Path $root 'launcher\app\build\outputs\apk\release\app-release.apk'
-$meta = Join-Path $root 'launcher\app\build\outputs\apk\release\output-metadata.json'
-$knownStockLaunchers = @(
-    'com.google.android.tvlauncher',
-    'com.google.android.apps.tv.launcherx',
-    'com.google.android.leanbacklauncher',
-    'com.mitv.tvhome'
-)
-$homeQuery = 'cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME'
+$ToolsDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepoDir = Split-Path -Parent $ToolsDir
+$Prebuilt = Join-Path $RepoDir 'prebuilt'
+$MainActivity = 'com.gathin.tvhome.MainActivity'
 
-function Fail([string]$message) { Write-Host "ERROR: $message" -ForegroundColor Red; exit 1 }
-function Note([string]$message) { Write-Host "==> $message" }
-function Tv([string]$command) {
-    $output = & $python -I $tvpy $command 2>&1 | Out-String
-    return $output
+function Die([string]$Message) { Write-Host "ERROR: $Message" -ForegroundColor Red; exit 1 }
+function Note([string]$Message) { Write-Host "==> $Message" }
+
+function Get-PackageOf([string]$Apk) {
+    $sidecar = [IO.Path]::ChangeExtension($Apk, '.package')
+    if (Test-Path $sidecar) { return (Get-Content $sidecar -Raw).Trim() }
+    return ''
 }
 
-if (-not $TvHost) { Fail 'pass -TvHost <ip>, or set TV_HOST. Example: tools\install.ps1 -TvHost 192.168.1.50' }
-if (-not (Test-Path $python)) {
-    Fail "no Python environment yet. Run:`n  python -m venv tools\venv; tools\venv\Scripts\python.exe -m pip install -r tools\requirements.txt"
+if (-not $TvHost) {
+    Die @"
+tell me the TV address:
+  powershell -ExecutionPolicy Bypass -File tools\install.ps1 192.168.1.50
+
+Find it on the TV under Settings > Network > Wi-Fi > network details.
+"@
 }
+$TvHost = ($TvHost -split ':')[0]
 $env:TV_HOST = $TvHost
 
-# --- Connect ---------------------------------------------------------------------------------
-$probe = Tv '--probe'
-Write-Host $probe
+# --- Python + the ADB transport ----------------------------------------------------------------
+$Py = Join-Path $ToolsDir 'venv\Scripts\python.exe'
+if (-not (Test-Path $Py)) {
+    $HostPy = $null
+    foreach ($candidate in @('python', 'python3', 'py')) {
+        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($cmd) { $HostPy = $cmd.Source; break }
+    }
+    if (-not $HostPy) {
+        Die @"
+Python 3 is not installed. Get it from https://www.python.org/downloads/
+During setup tick "Add python.exe to PATH", then run this again.
+"@
+    }
+    Note 'first run: setting up a small Python environment (one minute, once)'
+    & $HostPy -m venv (Join-Path $ToolsDir 'venv')
+    if (-not (Test-Path $Py)) { Die 'could not create the Python environment.' }
+    & $Py -m pip install --quiet --disable-pip-version-check -r (Join-Path $ToolsDir 'requirements.txt')
+    if ($LASTEXITCODE -ne 0) { Die 'could not download the two Python packages the installer needs.' }
+}
+
+function Invoke-Tv {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
+    $out = & $Py -I (Join-Path $ToolsDir 'tv.py') @Args 2>&1
+    return ($out | Out-String)
+}
+
+# --- uninstall ---------------------------------------------------------------------------------
+if ($Uninstall) {
+    Note "TV: $TvHost"
+    Invoke-Tv --probe | Out-Null
+    Get-ChildItem $Prebuilt -Filter *.apk | ForEach-Object {
+        $pkg = Get-PackageOf $_.FullName
+        if ($pkg) {
+            Invoke-Tv "pm uninstall $pkg" | Out-Null
+            Note "removed $pkg"
+        }
+    }
+    Note 'done. Press Home on the remote; if the TV asks which launcher, pick your old one.'
+    exit 0
+}
+
+# --- reach the TV ------------------------------------------------------------------------------
+Note "TV: $TvHost"
+Invoke-Tv --probe | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Fail "could not reach the TV. Check -TvHost, the 'Allow USB debugging' prompt on the TV, and that network debugging is still on (docs/ADAPT.md §2)."
+    Die @"
+could not reach $TvHost.
+  - is the TV on, and on the same network as this computer?
+  - is Settings > Developer options > Network debugging switched on?
+  - the first connection shows an 'Allow debugging' prompt on the TV -- accept it.
+"@
+}
+$sdk = (Invoke-Tv 'getprop ro.build.version.sdk') -replace '\D', ''
+if (-not $sdk) { Die "connected, but could not read the TV's Android version." }
+if ([int]$sdk -lt 26) { Die "this TV runs Android SDK $sdk; iPodTVStyle needs 26 (Android 8.0) or newer." }
+
+# --- try each variant --------------------------------------------------------------------------
+$homeQuery = 'cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME'
+function Get-Home { return ((Invoke-Tv $homeQuery) -split "`n" | Where-Object { $_.Trim() } | Select-Object -Last 1).Trim() }
+
+$order = if ($env:VARIANTS) { $env:VARIANTS -split '\s+' } else {
+    @('ipodtvstyle-neutral', 'ipodtvstyle-skyworth', 'ipodtvstyle-xiaomi', 'ipodtvstyle-tcl')
 }
 
-# --- Pre-flight: the TV's SDK against the launcher's minSdk -----------------------------------
-$buildFile = Get-Content (Join-Path $root 'launcher\app\build.gradle') -Raw
-$minSdk = if ($buildFile -match '(?m)^\s*minSdk\s+(\d+)\s*$') { [int]$Matches[1] } else { 0 }
-$tvSdk = (Tv 'getprop ro.build.version.sdk') -replace '[^0-9]', ''
-if ($minSdk -gt 0 -and $tvSdk -and [int]$tvSdk -lt $minSdk) {
-    Fail "this TV runs SDK $tvSdk and the launcher needs SDK $minSdk or newer. Nothing was built, installed or disabled."
+Note 'installing'
+$winner = $null
+foreach ($name in $order) {
+    $apk = Join-Path $Prebuilt "$name.apk"
+    if (-not (Test-Path $apk)) { continue }
+    $pkg = Get-PackageOf $apk
+    if (-not $pkg) { continue }
+
+    & $Py -I (Join-Path $ToolsDir 'b64push.py') $apk /data/local/tmp/ipodtvstyle.apk 2>&1 | Out-Null
+    $installOut = Invoke-Tv 'pm install -r /data/local/tmp/ipodtvstyle.apk; rm -f /data/local/tmp/ipodtvstyle.apk'
+    if ($installOut -notmatch 'Success') { Note "  $pkg: install refused, trying the next variant"; continue }
+
+    Invoke-Tv "cmd package compile -m speed -f $pkg" | Out-Null
+    Invoke-Tv "cmd package set-home-activity --user 0 $pkg/$MainActivity" | Out-Null
+    Invoke-Tv "am start -n $pkg/$MainActivity" | Out-Null
+    Start-Sleep -Seconds 2
+
+    # resolve-activity only echoes what set-home-activity just wrote. Coocaa/Skyworth firmware
+    # routes the physical Home key through vendor properties and ignores that value, so press the
+    # key and see who is actually in front -- that is the only answer that matters.
+    Invoke-Tv 'input keyevent KEYCODE_HOME' | Out-Null
+    Start-Sleep -Seconds 2
+    $focus = (Invoke-Tv 'dumpsys window | grep mCurrentFocus') -split "`n" | Select-Object -First 1
+    if ($focus -like "*$pkg*") { $winner = $pkg; Note "  $pkg: Home key lands here"; break }
+
+    Note "  $pkg: installed, but the Home key still goes to the stock launcher"
+    Invoke-Tv "pm uninstall $pkg" | Out-Null
 }
 
-# --- Build -----------------------------------------------------------------------------------
-if (-not $SkipBuild) {
-    $buildArgs = @{}
-    if ($LauncherApplicationId) { $buildArgs['LauncherApplicationId'] = $LauncherApplicationId }
-    & (Join-Path $tools 'build.ps1') @buildArgs
-    if ($LASTEXITCODE -ne 0) { Fail 'the build failed (see above).' }
-}
-if (-not (Test-Path $apk)) { Fail "no APK at $apk. Run tools\build.ps1 first, or pass -SkipBuild only when it exists." }
+if (-not $winner) {
+    Die @"
+every variant installed cleanly, but none was allowed to become Home.
 
-# --- Which package did we just build? --------------------------------------------------------
-if (-not $AppId -and (Test-Path $meta)) {
-    try {
-        $metadata = Get-Content $meta -Raw | ConvertFrom-Json
-        if ($metadata.applicationId) { $AppId = $metadata.applicationId }
-        elseif ($metadata.elements -and $metadata.elements[0].applicationId) { $AppId = $metadata.elements[0].applicationId }
-    }
-    catch { }
-}
-if (-not $AppId) {
-    $properties = Join-Path $root 'launcher\gradle.properties'
-    if (Test-Path $properties) {
-        $line = Get-Content $properties | Where-Object { $_ -match '^\s*launcherApplicationId\s*=' } | Select-Object -First 1
-        if ($line) { $AppId = ($line -split '=', 2)[1].Trim() }
-    }
-}
-if (-not $AppId) { Fail "cannot tell which package this APK uses. Pass -AppId <package> (the APK records it in output-metadata.json)." }
-Note "package: $AppId   activity: $MainActivity"
+This TV only hands Home to a package name on its own allow-list, and none of the
+names shipped in prebuilt\ is on it. Nothing was left behind and your stock
+launcher is untouched.
 
-# --- Who owns Home right now? ----------------------------------------------------------------
-if (-not $StockLauncher) {
-    $resolved = (Tv $homeQuery) -split "`n" | Where-Object { $_.Trim() } | Select-Object -Last 1
-    $homePkg = ($resolved.Trim() -split '/')[0]
-    if (-not $homePkg) { Fail 'could not ask the TV which launcher owns Home. Pass -StockLauncher <package>, or -StockLauncher none.' }
-    if ($knownStockLaunchers -contains $homePkg) {
-        $StockLauncher = $homePkg
-    }
-    elseif ($homePkg -eq $AppId) {
-        $StockLauncher = 'none'
-        Note 'Home already belongs to this launcher; nothing will be disabled.'
-    }
-    elseif ($homePkg -eq 'android') {
-        Fail "Home is Android's launcher chooser (two launchers tie). Pick a default on the TV first, then run this again - or pass -StockLauncher none."
-    }
-    else {
-        Fail "Home resolves to '$homePkg', which is not a launcher this script knows. Re-run with -StockLauncher <package> or -StockLauncher none."
-    }
-}
-Note "stock launcher: $StockLauncher"
-$disableStock = if ($StockLauncher -eq 'none') { 'echo stock launcher left alone' } else { "pm disable-user --user 0 $StockLauncher" }
-
-# --- Install (alone, so a failed install cannot be followed by disabling the stock launcher) ---
-$apkKb = [math]::Round((Get-Item $apk).Length / 1KB)
-Note "uploading $apkKb KB"
-& $python -I (Join-Path $tools 'b64push.py') $apk /data/local/tmp/ipodtvstyle.apk
-if ($LASTEXITCODE -ne 0) { Fail 'the upload failed (see above). Nothing was installed or disabled.' }
-$installOut = Tv 'pm install -r /data/local/tmp/ipodtvstyle.apk; rm -f /data/local/tmp/ipodtvstyle.apk'
-Write-Host $installOut
-if ($installOut -notmatch 'Success') {
-    if ($installOut -match 'INSTALL_FAILED_OLDER_SDK') {
-        Fail 'the APK is too new for this TV (INSTALL_FAILED_OLDER_SDK). The stock launcher was left untouched.'
-    }
-    if ($installOut -match 'INSTALL_FAILED_UPDATE_INCOMPATIBLE') {
-        Fail "a package called $AppId is already installed with a different signature - usually a build made on another computer. Uninstall that one first (set Home back to the stock launcher BEFORE uninstalling), then run this again."
-    }
-    if ($installOut -match 'INSTALL_FAILED_USER_RESTRICTED|INSTALL_FAILED_VERIFICATION_FAILURE') {
-        Fail "the TV refused the install. On Coocaa/Skyworth sets an install confirmation appears on the TV screen and letting it time out produces exactly this answer. Accept it on the TV and run this again."
-    }
-    Fail 'pm install failed (see above). The stock launcher was left untouched.'
+Options:
+  - Contribute your model: docs\devices\README.md shows what to record.
+  - Build a variant with your TV's own Home package name:
+      powershell -File tools\build.ps1 -LauncherApplicationId <the name>
+    Find that name with, on the TV:  pm list packages | findstr /i launch
+"@
 }
 
-if (-not ((Tv "pm list packages $AppId") -match "package:$([regex]::Escape($AppId))")) {
-    Fail "the APK installed, but not as $AppId. Re-run with -AppId <the package it really uses>; nothing was disabled and Home is unchanged."
-}
+Note 'done'
+Write-Host @"
 
-# --- Start the new launcher and check it really came up --------------------------------------
-$startCmd = if ($StockLauncher -eq 'none') {
-    "am start -W -n $AppId/$MainActivity"
-} else {
-    "am start -W -a android.intent.action.MAIN -c android.intent.category.HOME -n $AppId/$MainActivity"
-}
-$startOut = Tv $startCmd
-Write-Host $startOut
-if (($startOut -notmatch 'Status: ok') -or ($startOut -match '(?m)^Error')) {
-    Fail "the new launcher did not start (see above). $StockLauncher was left enabled and Home is unchanged."
-}
+  package   : $winner
+  Home key  : $winner/$MainActivity
 
-# --- Hand over Home --------------------------------------------------------------------------
-Note "handing the Home key to $AppId"
-$batch = @(
-    "cmd package compile -m speed -f $AppId",
-    $disableStock,
-    "cmd package set-home-activity --user 0 $AppId/$MainActivity"
-)
-$batchFile = [System.IO.Path]::GetTempFileName()
-try {
-    Set-Content -Path $batchFile -Value $batch -Encoding ASCII
-    Get-Content $batchFile | & $python -I $tvpy --batch
-    if ($LASTEXITCODE -ne 0) { Fail 'the Home handover commands failed (see above).' }
-}
-finally { Remove-Item $batchFile -ErrorAction SilentlyContinue }
+Press Home on the remote. If the TV asks which launcher to use, pick iPodTVStyle
+and choose "Always".
 
-function QueryHome {
-    $lines = Tv $homeQuery 2>$null
-    ($lines -split "`n" | Where-Object { $_.Trim() } | Select-Object -Last 1).Trim()
-}
-function RollbackHome {
-    if ($StockLauncher -eq 'none') { Write-Host 'No stock launcher was disabled, so there is nothing to roll back.'; return $false }
-    Tv "pm enable --user 0 $StockLauncher" | Out-Null
-    Tv "cmd package set-home-activity --user 0 `$(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME $StockLauncher | tail -n 1)" | Out-Null
-    $back = QueryHome
-    if ($back -like "$StockLauncher/*") { Write-Host "$StockLauncher owns Home again."; return $true }
-    $recovery = Join-Path $env:USERPROFILE ("ipodtvstyle-recovery-" + ($TvHost -replace '[^A-Za-z0-9._-]', '_') + '.txt')
-    @(
-        "# iPodTVStyle: the Home handover on $TvHost did not finish. From the repo root:",
-        "`$env:TV_HOST='$TvHost'; tools\venv\Scripts\python.exe -I tools\tv.py 'pm enable --user 0 $StockLauncher'",
-        "`$env:TV_HOST='$TvHost'; tools\venv\Scripts\python.exe -I tools\tv.py 'cmd package set-home-activity --user 0 `$(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME $StockLauncher | tail -n 1)'"
-    ) | Set-Content -Path $recovery -Encoding UTF8
-    Write-Host "ERROR: Home still resolves to '$back'." -ForegroundColor Red
-    Write-Host "The commands that finish the recovery are in $recovery - the TV still needs ADB for them."
-    return $false
-}
+To undo everything:
+  powershell -ExecutionPolicy Bypass -File tools\install.ps1 $TvHost -Uninstall
 
-$homeNow = QueryHome
-if ($homeNow -like "$AppId/*") {
-    Note "Home now resolves to $homeNow"
-}
-else {
-    Write-Host "ERROR: Home resolves to '$homeNow', not to $AppId." -ForegroundColor Red
-    RollbackHome | Out-Null
-    Write-Host 'On some Coocaa/Skyworth firmware the physical Home key and the boot path use vendor properties,'
-    Write-Host 'not Android''s HOME preference: docs/ADAPT.md §5 covers what to do there.'
-    exit 1
-}
-
-Write-Host ''
-Write-Host 'Installed. Press Home on the remote.'
-Write-Host "  package   : $AppId"
-Write-Host "  Home key  : $AppId/$MainActivity"
-Write-Host "  stock     : $StockLauncher"
-Write-Host ''
-Write-Host 'To go back:'
-Write-Host "  tools\venv\Scripts\python.exe -I tools\tv.py 'pm enable --user 0 $StockLauncher'"
-if ($StockLauncher -eq 'none') { Write-Host '  (nothing was disabled, so nothing has to be re-enabled)' }
-Write-Host 'When you are done with ADB, turn debugging off and check the port is closed:'
-Write-Host "  python tools\adb-closed.py $TvHost"
+When you are done with debugging, turn it off on the TV:
+Settings > Developer options > Network debugging.
+"@
