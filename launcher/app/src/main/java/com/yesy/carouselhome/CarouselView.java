@@ -399,9 +399,8 @@ public final class CarouselView extends View {
 
     /** What one bake needs to know about an icon, measured in a single pass over its pixels. */
     private static final class IconStats {
-        int color;          // plate colour
-        Bitmap logo;        // the icon with its own background knocked out, or null
-        boolean logoIsGlyph; // true when the background was removed and a glyph is left
+        int color;             // plate colour, taken from the artwork's own background
+        float artScale = .76f; // how much of the card the artwork covers
     }
 
     /**
@@ -412,75 +411,59 @@ public final class CarouselView extends View {
     private static IconStats analyze(Bitmap icon) {
         IconStats stats = new IconStats();
         stats.color = 0xfff4f2ee;
-        if (icon == null) {
-            stats.color = 0xff111111; // dark plate so the fallback label reads
-            return stats;
-        }
+        if (icon == null) return stats;
 
         int[] pixels = new int[CARD * CARD];
         icon.getPixels(pixels, 0, CARD, 0, 0, CARD, CARD);
 
-        // 1 · What colour is the icon's own backdrop? Sample the border ring, which is background
-        //     on every well-formed launcher icon.
+        // The card's fill is generated from the artwork itself, so the colour here only matters
+        // for the label that stands in when an icon cannot be read.
         int[] ring = borderRing(pixels);
         int backdrop = median(ring);
-        // A knockout is only safe when the border really is one flat colour. An icon whose edge
-        // already carries artwork must be left whole -- cutting into it is what made Mango TV and
-        // the 云视听 tile come out half-drawn.
-        int ringSolid = 0;
-        int ringOpaque = 0;
+        int solidRing = 0;
+        int ringTotal = 0;
         for (int argb : ring) {
-            if ((argb >>> 24) < 200) continue;
-            ringOpaque++;
-            if (near(argb, backdrop, 26)) ringSolid++;
+            ringTotal++;
+            if ((argb >>> 24) >= 200) solidRing++;
         }
-        float ringUniformity = ringOpaque == 0 ? 0f : ringSolid / (float) ringOpaque;
-        int backdropHits = 0;
-        int opaque = 0;
-        for (int argb : pixels) {
-            if ((argb >>> 24) < 24) continue;
-            opaque++;
-            if (near(argb, backdrop, 46)) backdropHits++;
+        // A transparent icon has no background of its own to match, so use the colour the artwork
+        // leans on most; otherwise the card would be filled with pure white behind a see-through
+        // picture.
+        if (ringTotal == 0 || solidRing * 100 / ringTotal < 60) {
+            backdrop = dominantColour(pixels);
         }
-        float coverage = opaque == 0 ? 0f : backdropHits / (float) opaque;
-
-        // 2 · When the backdrop dominates, the icon is a logo printed on a plate -- exactly the
-        //     material the reference ring is made of. Knock it out and keep the plate colour.
-        if (coverage >= .38f) {
-            Bitmap glyph = knockOut(pixels, backdrop, 45);
-            if (glyph != null) {
-                stats.logo = glyph;
-                stats.logoIsGlyph = true;
-                stats.color = opaquePlate(backdrop, glyph);
-                return stats;
-            }
-        }
-
-        // 3 · No single backdrop: the artwork is the brand. Plate takes the most vivid frequent
-        //     colour, not the most frequent one -- a mostly-white icon is common and white is not
-        //     a plate you can see.
-        int vivid = vividColour(pixels);
-
-        long sum = 0;
-        int counted = 0;
-        for (int argb : pixels) {
-            if ((argb >>> 24) < 200) continue;
-            sum += luma(argb);
-            counted++;
-        }
-        int glyphLuma = counted == 0 ? 128 : (int) (sum / counted);
-
-        int plate;
-        if (vivid != 0 && Math.abs(luma(vivid) - glyphLuma) >= 55) {
-            plate = vivid;
-        } else {
-            // Either there is no colour, or the artwork would vanish on its own colour. A neutral
-            // plate keeps the logo readable; tinting the brand colour here only made the ring look
-            // muddy.
-            plate = glyphLuma > 150 ? 0xff1c1c1e : 0xfff4f2ee;
-        }
-        stats.color = plate;
+        stats.color = backdrop;
         return stats;
+    }
+
+    /** The most frequent solid colour, for artwork whose own background is transparent. */
+    private static int dominantColour(int[] pixels) {
+        int[] counts = new int[4096];
+        int[] reds = new int[4096];
+        int[] greens = new int[4096];
+        int[] blues = new int[4096];
+        for (int argb : pixels) {
+            if ((argb >>> 24) < 200) continue;
+            int red = (argb >> 16) & 0xff;
+            int green = (argb >> 8) & 0xff;
+            int blue = argb & 0xff;
+            int bucket = ((red >> 4) << 8) | ((green >> 4) << 4) | (blue >> 4);
+            counts[bucket]++;
+            reds[bucket] += red;
+            greens[bucket] += green;
+            blues[bucket] += blue;
+        }
+        int best = -1;
+        int bestCount = 0;
+        for (int bucket = 0; bucket < 4096; bucket++) {
+            if (counts[bucket] > bestCount) { bestCount = counts[bucket]; best = bucket; }
+        }
+        if (best < 0) return 0xfff4f2ee;
+        int count = counts[best];
+        return 0xff000000
+                | ((reds[best] / count) << 16)
+                | ((greens[best] / count) << 8)
+                | (blues[best] / count);
     }
 
     /** The four edges of the card, used to guess an icon's own background colour. */
@@ -726,24 +709,17 @@ public final class CarouselView extends View {
         canvas.clipPath(roundedCard);
         canvas.drawColor(color);
         Paint bakePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        if (stats != null && stats.logoIsGlyph && stats.logo != null) {
-            // Album cover: a separated logo sits inside the plate.
-            Bitmap glyph = stats.logo;
-            float maxWidth = CARD * (LOGO_WIDTH + .26f);
-            float maxHeight = CARD * .62f;
-            float scale = Math.min(maxWidth / glyph.getWidth(), maxHeight / glyph.getHeight());
-            float width = glyph.getWidth() * scale;
-            float height = glyph.getHeight() * scale;
-            RectF target = new RectF((CARD - width) / 2f, (CARD - height) / 2f,
-                    (CARD + width) / 2f, (CARD + height) / 2f);
-            canvas.drawBitmap(glyph, null, target, bakePaint);
-        } else if (icon != null) {
-            // Full-bleed tile: the artwork has no separable logo, so it *is* the card. Shrinking it
-            // would put a stamp on a plate; filling the card reads as a deliberate design.
-            canvas.drawBitmap(icon, null,
-                    new RectF(0f, 0f, CARD, CARD), bakePaint);
-        } else {
+        if (icon == null) {
             drawFallbackLabel(canvas, app);
+        } else {
+            // Fill the card by extending the artwork's own edge colour inward. Sampling a 3x3 grid
+            // from the icon's border -- never from its middle, which is where the logo lives -- and
+            // interpolating between those nine colours matches a flat or graded icon background
+            // without dragging any of the logo's colour into the fill.
+            paintField(canvas, icon);
+            float size = CARD * (stats != null ? stats.artScale : .76f);
+            float left = (CARD - size) / 2f;
+            canvas.drawBitmap(icon, null, new RectF(left, left, left + size, left + size), bakePaint);
         }
 
         bakePaint.setShader(new LinearGradient(0f, 0f, CARD, CARD,
@@ -777,10 +753,52 @@ public final class CarouselView extends View {
         // The face only existed to seed the textures: dropping it keeps memory flat, which
         // matters once the ring is as long as the TV's app list.
         face.recycle();
-        if (stats != null && stats.logo != null && stats.logo != icon) stats.logo.recycle();
         if (icon != null) icon.recycle();
         paint.setAlpha(255);
         paint.setShader(null);
+    }
+
+    /**
+     * Paint the card with a smooth field built only from the artwork's outer edge. Nine samples:
+     * four corners, four edge midpoints, and their average as the centre -- the centre of the icon
+     * itself is deliberately not read, because that is the logo.
+     */
+    private void paintField(Canvas canvas, Bitmap icon) {
+        int[] pixels = new int[CARD * CARD];
+        icon.getPixels(pixels, 0, CARD, 0, 0, CARD, CARD);
+        int patch = Math.max(3, CARD / 22);
+        // Corners, not edges: on any rounded-square icon the corners are pure background, while the
+        // middle of an edge can already carry artwork. Sampling the left half of the bottom edge of
+        // the Mango TV icon, for instance, pulled a teal smear into the card.
+        int top = median(concat(
+                corner(pixels, 0, 0, patch),
+                corner(pixels, CARD - patch, 0, patch)));
+        int bottom = median(concat(
+                corner(pixels, 0, CARD - patch, patch),
+                corner(pixels, CARD - patch, CARD - patch, patch)));
+        Paint fieldPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        fieldPaint.setShader(new LinearGradient(0f, 0f, 0f, CARD, top, bottom, Shader.TileMode.CLAMP));
+        canvas.drawRect(0f, 0f, CARD, CARD, fieldPaint);
+        fieldPaint.setShader(null);
+    }
+
+    private static int[] corner(int[] pixels, int left, int top, int size) {
+        int[] out = new int[size * size];
+        int at = 0;
+        for (int y = top; y < top + size; y++) {
+            int row = y * CARD;
+            for (int x = left; x < left + size; x++) {
+                int argb = pixels[row + x];
+                if ((argb >>> 24) >= 200) out[at++] = argb;
+            }
+        }
+        return java.util.Arrays.copyOf(out, at);
+    }
+
+    private static int[] concat(int[] a, int[] b) {
+        int[] out = java.util.Arrays.copyOf(a, a.length + b.length);
+        System.arraycopy(b, 0, out, a.length, b.length);
+        return out;
     }
 
     /** No readable icon: the label still gives the tile something to say. */
