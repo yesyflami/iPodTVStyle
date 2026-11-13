@@ -355,8 +355,19 @@ public final class CarouselView extends View {
         if (app.card != null) return;
         PackageManager manager = getContext().getPackageManager();
         Bitmap icon = renderIcon(manager, app.packageName);
-        IconStats stats = analyze(icon);
-        bakeCard(app, icon, stats);
+        IconStats stats = null;
+        try {
+            stats = analyze(icon);
+        } catch (RuntimeException ignored) {
+            // One app's artwork must never take the whole launcher down with it.
+            stats = new IconStats();
+            stats.color = 0xfff4f2ee;
+        }
+        try {
+            bakeCard(app, icon, stats);
+        } catch (RuntimeException ignored) {
+            app.card = null;
+        }
     }
 
     /** Rasterise the app's own icon at card resolution, keeping its proportions. */
@@ -413,6 +424,17 @@ public final class CarouselView extends View {
         //     on every well-formed launcher icon.
         int[] ring = borderRing(pixels);
         int backdrop = median(ring);
+        // A knockout is only safe when the border really is one flat colour. An icon whose edge
+        // already carries artwork must be left whole -- cutting into it is what made Mango TV and
+        // the 云视听 tile come out half-drawn.
+        int ringSolid = 0;
+        int ringOpaque = 0;
+        for (int argb : ring) {
+            if ((argb >>> 24) < 200) continue;
+            ringOpaque++;
+            if (near(argb, backdrop, 26)) ringSolid++;
+        }
+        float ringUniformity = ringOpaque == 0 ? 0f : ringSolid / (float) ringOpaque;
         int backdropHits = 0;
         int opaque = 0;
         for (int argb : pixels) {
@@ -424,8 +446,8 @@ public final class CarouselView extends View {
 
         // 2 · When the backdrop dominates, the icon is a logo printed on a plate -- exactly the
         //     material the reference ring is made of. Knock it out and keep the plate colour.
-        if (coverage >= .38f && luma(backdrop) >= 0) {
-            Bitmap glyph = knockOut(pixels, backdrop, 52);
+        if (coverage >= .38f) {
+            Bitmap glyph = knockOut(pixels, backdrop, 45);
             if (glyph != null) {
                 stats.logo = glyph;
                 stats.logoIsGlyph = true;
@@ -438,9 +460,7 @@ public final class CarouselView extends View {
         //     colour, not the most frequent one -- a mostly-white icon is common and white is not
         //     a plate you can see.
         int vivid = vividColour(pixels);
-        int plate = vivid == 0 ? 0xfff4f2ee : (0xff000000 | vivid);
 
-        // Keep the artwork from disappearing into its own plate.
         long sum = 0;
         int counted = 0;
         for (int argb : pixels) {
@@ -448,11 +468,16 @@ public final class CarouselView extends View {
             sum += luma(argb);
             counted++;
         }
-        if (counted > 0) {
-            int glyphLuma = (int) (sum / counted);
-            if (Math.abs(luma(plate) - glyphLuma) < 60) {
-                plate = glyphLuma > 140 ? 0xff1c1c1e : 0xfff4f2ee;
-            }
+        int glyphLuma = counted == 0 ? 128 : (int) (sum / counted);
+
+        int plate;
+        if (vivid != 0 && Math.abs(luma(vivid) - glyphLuma) >= 55) {
+            plate = vivid;
+        } else {
+            // Either there is no colour, or the artwork would vanish on its own colour. A neutral
+            // plate keeps the logo readable; tinting the brand colour here only made the ring look
+            // muddy.
+            plate = glyphLuma > 150 ? 0xff1c1c1e : 0xfff4f2ee;
         }
         stats.color = plate;
         return stats;
@@ -528,20 +553,53 @@ public final class CarouselView extends View {
         // Too little left (a solid swatch) or too much (the knockout missed) means we could not
         // separate a logo; the caller falls back to using the artwork whole.
         int keptFraction = kept * 100 / (CARD * CARD);
-        if (keptFraction < 4 || keptFraction > 62 || maxX < 0) return null;
+        if (keptFraction < 6 || keptFraction > 68 || maxX < 0) return null;
+        if (bboxFillsTooMuch(minX, minY, maxX, maxY)) return null;
+        // Only crumbs go: parts of a multi-piece logo stay, because a logo is allowed to be more
+        // than one blob -- the Chinese wordmark under a glyph, the dot over an 'i'.
+        dropCrumbs(out);
 
-        keepLargestBlob(out);
-        Bitmap glyph = Bitmap.createBitmap(CARD, CARD, Bitmap.Config.ARGB_8888);
-        glyph.setPixels(out, 0, CARD, 0, 0, CARD, CARD);
+        // Crop to what survived. An app logo is not always centred in its own artwork, and scaling
+        // the whole canvas pushed off-centre logos past the card edge, which is why some tiles
+        // looked like half a picture.
+        minX = CARD; minY = CARD; maxX = -1; maxY = -1;
+        for (int y = 0; y < CARD; y++) {
+            int row = y * CARD;
+            for (int x = 0; x < CARD; x++) {
+                if ((out[row + x] >>> 24) == 0) continue;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+        if (maxX < 0) return null;
+        int pad = CARD / 24;
+        minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+        maxX = Math.min(CARD - 1, maxX + pad); maxY = Math.min(CARD - 1, maxY + pad);
+        int width = maxX - minX + 1;
+        int height = maxY - minY + 1;
+        int[] cropped = new int[width * height];
+        for (int y = 0; y < height; y++) {
+            System.arraycopy(out, (minY + y) * CARD + minX, cropped, y * width, width);
+        }
+        Bitmap glyph = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        glyph.setPixels(cropped, 0, width, 0, 0, width, height);
         return glyph;
     }
 
+    /** A logo whose parts are all bunched together is one picture; spread out, it is a mistake. */
+    private static boolean bboxFillsTooMuch(int minX, int minY, int maxX, int maxY) {
+        return maxX - minX > CARD * .96f && maxY - minY > CARD * .96f;
+    }
+
     /**
-     * Drop every blob but the biggest one. Knocking out a background colour leaves crumbs wherever
-     * the artwork happens to share it -- a stray wedge of a neighbouring shape, the corner of a
-     * rounded plate -- and a single crumb is enough to make a card look broken.
+     * Drop crumbs, keep the rest. Knocking out a background colour leaves specks wherever the
+     * artwork happens to share it -- the corner of a rounded plate, a stray wedge. A logo is
+     * allowed to be several blobs (a glyph plus a wordmark plus a dot), so only pieces that are
+     * negligible next to the biggest one are removed.
      */
-    private static void keepLargestBlob(int[] pixels) {
+    private static void dropCrumbs(int[] pixels) {
         final int n = pixels.length;
         int[] label = new int[n];
         java.util.Arrays.fill(label, -1);
@@ -570,8 +628,14 @@ public final class CarouselView extends View {
             next++;
         }
         if (bestLabel < 0) return;
+        int floor = Math.max(12, bestSize * 12 / 100);
+        int[] sizes = new int[next];
         for (int i = 0; i < n; i++) {
-            if ((pixels[i] >>> 24) != 0 && label[i] != bestLabel) pixels[i] = 0;
+            if ((pixels[i] >>> 24) != 0 && label[i] >= 0) sizes[label[i]]++;
+        }
+        for (int i = 0; i < n; i++) {
+            if ((pixels[i] >>> 24) == 0 || label[i] < 0) continue;
+            if (sizes[label[i]] < floor) pixels[i] = 0;
         }
     }
 
@@ -584,8 +648,10 @@ public final class CarouselView extends View {
 
     /** A plate the knocked-out logo can sit on: the backdrop, pushed away from the logo's luma. */
     private static int opaquePlate(int backdrop, Bitmap glyph) {
-        int[] pixels = new int[CARD * CARD];
-        glyph.getPixels(pixels, 0, CARD, 0, 0, CARD, CARD);
+        int width = glyph.getWidth();
+        int height = glyph.getHeight();
+        int[] pixels = new int[width * height];
+        glyph.getPixels(pixels, 0, width, 0, 0, width, height);
         long sum = 0;
         int counted = 0;
         for (int argb : pixels) {
