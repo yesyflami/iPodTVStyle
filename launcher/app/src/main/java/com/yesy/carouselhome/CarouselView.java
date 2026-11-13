@@ -554,6 +554,9 @@ public final class CarouselView extends View {
         // separate a logo; the caller falls back to using the artwork whole.
         int keptFraction = kept * 100 / (CARD * CARD);
         if (keptFraction < 6 || keptFraction > 68 || maxX < 0) return null;
+        // Nearly full-canvas means the artwork is a poster, not a logo on a plate. Punching the
+        // backdrop out of a poster leaves holes in it -- that is what happened to Mango TV.
+        if (maxX - minX + 1 > CARD * .82f && maxY - minY + 1 > CARD * .82f) return null;
         if (bboxFillsTooMuch(minX, minY, maxX, maxY)) return null;
         // Only crumbs go: parts of a multi-piece logo stay, because a logo is allowed to be more
         // than one blob -- the Chinese wordmark under a glyph, the dot over an 'i'.
@@ -659,11 +662,12 @@ public final class CarouselView extends View {
             sum += luma(argb);
             counted++;
         }
-        if (counted == 0) return 0xfff4f2ee;
+        if (counted == 0) return backdrop;
         int glyphLuma = (int) (sum / counted);
-        if (Math.abs(luma(backdrop) - glyphLuma) >= 55) return backdrop;
-        // Same brightness: a dark logo gets a light plate and vice versa.
-        return glyphLuma > 140 ? 0xfff4f2ee : 0xff1c1c1e;
+        // The icon's own background is the faithful choice and usually has enough internal
+        // contrast on its own; only a near-identical brightness needs rescuing.
+        if (Math.abs(luma(backdrop) - glyphLuma) >= 30) return backdrop;
+        return glyphLuma > 128 ? 0xfff4f2ee : 0xff1c1c1e;
     }
 
     /** The most vivid colour that still covers a meaningful share of the artwork. */
@@ -722,21 +726,24 @@ public final class CarouselView extends View {
         canvas.clipPath(roundedCard);
         canvas.drawColor(color);
         Paint bakePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        Bitmap art = stats != null && stats.logo != null ? stats.logo : icon;
-        if (art == null) {
-            drawFallbackLabel(canvas, app);
-        } else {
-            // Album-cover proportions, as in the original design: the logo sits inside the plate
-            // rather than replacing it. A knocked-out logo gets a little more room than a full
-            // icon, because most of its canvas is now empty.
-            float maxWidth = CARD * (stats != null && stats.logoIsGlyph ? LOGO_WIDTH + .26f : LOGO_WIDTH);
+        if (stats != null && stats.logoIsGlyph && stats.logo != null) {
+            // Album cover: a separated logo sits inside the plate.
+            Bitmap glyph = stats.logo;
+            float maxWidth = CARD * (LOGO_WIDTH + .26f);
             float maxHeight = CARD * .62f;
-            float scale = Math.min(maxWidth / art.getWidth(), maxHeight / art.getHeight());
-            float width = art.getWidth() * scale;
-            float height = art.getHeight() * scale;
+            float scale = Math.min(maxWidth / glyph.getWidth(), maxHeight / glyph.getHeight());
+            float width = glyph.getWidth() * scale;
+            float height = glyph.getHeight() * scale;
             RectF target = new RectF((CARD - width) / 2f, (CARD - height) / 2f,
                     (CARD + width) / 2f, (CARD + height) / 2f);
-            canvas.drawBitmap(art, null, target, bakePaint);
+            canvas.drawBitmap(glyph, null, target, bakePaint);
+        } else if (icon != null) {
+            // Full-bleed tile: the artwork has no separable logo, so it *is* the card. Shrinking it
+            // would put a stamp on a plate; filling the card reads as a deliberate design.
+            canvas.drawBitmap(icon, null,
+                    new RectF(0f, 0f, CARD, CARD), bakePaint);
+        } else {
+            drawFallbackLabel(canvas, app);
         }
 
         bakePaint.setShader(new LinearGradient(0f, 0f, CARD, CARD,
