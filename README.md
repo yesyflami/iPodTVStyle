@@ -135,8 +135,8 @@ Steps:
 3. Set up the connection layer once:
    python3 -m venv tools/venv && tools/venv/bin/pip install -r tools/requirements.txt
    (Windows: python -m venv tools\venv, then tools\venv\Scripts\python.exe -m pip install -r tools\requirements.txt)
-4. Tell me what the TV says it is: TV_HOST=___ tools/venv/bin/python -I tools/tv.py --probe
-5. Build and install in one step: TV_HOST=___ tools/install.sh
+4. Install it, using the IP above: tools/install.sh
+   (Windows: powershell -ExecutionPolicy Bypass -File tools\install.ps1, same IP)
    It installs, starts the launcher, checks it came up, and only then takes the Home key.
    If it stops, read its message and tell me - do not work around it.
 6. Hand me the restore commands it prints at the end

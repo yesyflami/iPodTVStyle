@@ -104,7 +104,7 @@
 
 确认电脑与电视连接在**同一个 Wi-Fi** 下。
 
-把下面这段直接发给助手，**只需要改里面的 IP**：
+把下面这段直接发给助手。**全文只有一处要你改**：`电视 IP：___` 那行，把 `___` 换成电视的 IP，其余原样发过去。
 
 ```text
 请帮我把我的电视换成 iPodTVStyle 桌面。
@@ -114,8 +114,8 @@
 
 操作步骤：
 1. 克隆仓库并进入目录
-2. 执行：tools/install.sh ___
-   （Windows：powershell -ExecutionPolicy Bypass -File tools\install.ps1 ___）
+2. 执行 tools/install.sh，参数用上面那个 IP
+   （Windows 用：powershell -ExecutionPolicy Bypass -File tools\install.ps1，同样用上面那个 IP）
 3. 把它打印的结果原样告诉我
 
 注意事项：
