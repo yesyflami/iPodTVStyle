@@ -240,7 +240,8 @@ public final class CarouselView extends View {
             int codePoint = text.codePointAt(index);
             index += Character.charCount(codePoint);
             if (codePoint <= 0x20) continue;
-            if (!probe.hasGlyph(codePoint)) return false;
+            // Paint.hasGlyph only takes a String -- there is no int overload.
+            if (!probe.hasGlyph(new String(Character.toChars(codePoint)))) return false;
         }
         return true;
     }

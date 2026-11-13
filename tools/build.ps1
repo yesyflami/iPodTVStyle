@@ -42,8 +42,8 @@ try {
     if ($versionLine -notmatch 'version "(\d+)') { Fail "could not read the JDK version from: $versionLine" }
     $major = [int]$Matches[1]
     if ($major -eq 1) { $major = 8 }  # 1.8 style version strings
-    if ($major -notin 17, 21, 22) {
-        Fail "JDK $major at ${javaHome} - Gradle 8.9 needs 17, 21 or 22. Point JAVA_HOME at a JDK 17."
+    if ($major -notin 17, 18, 19, 20, 21, 22) {
+        Fail "JDK $major at ${javaHome} - Gradle 8.9 needs 17-22 (23+ stops with 'Unsupported class file major version'). Point JAVA_HOME at a JDK 17."
     }
 
     # --- Android SDK

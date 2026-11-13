@@ -15,37 +15,70 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 # Gradle 8.9 stops on JDK 23+ ("Unsupported class file major version"), and a JRE is not enough:
 # the Android Gradle plugin needs jlink. So every candidate must be a JDK, not just a java binary.
 find_jdk() {
-  local candidate wanted
+  local candidate version home
+
+  # 1 · JAVA_HOME wins when it really is a JDK (a JRE has no jlink).
   if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/jlink" ]; then
     printf '%s\n' "$JAVA_HOME"; return 0
   fi
-  if [ -x /usr/libexec/java_home ]; then                       # macOS
-    for wanted in 17 21 22; do
-      candidate="$(/usr/libexec/java_home -v "$wanted" 2>/dev/null || true)"
+
+  # 2 · macOS registry.
+  if [ -x /usr/libexec/java_home ]; then
+    for version in 17 21 22 18 19 20; do
+      candidate="$(/usr/libexec/java_home -v "$version" 2>/dev/null || true)"
       if [ -n "$candidate" ] && [ -x "$candidate/bin/jlink" ]; then
         printf '%s\n' "$candidate"; return 0
       fi
     done
   fi
-  for candidate in /opt/homebrew/opt/openjdk@17 /usr/local/opt/openjdk@17; do
+
+  # 3 · Where JDKs actually live. Android Studio's bundled JBR is a full JDK with jlink and is
+  # the only JDK many machines have -- dropping it was why this script started failing on
+  # machines that used to build fine.
+  for candidate in \
+      "/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+      "${HOME:-}/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+      "${LOCALAPPDATA:-}/Programs/Android Studio/jbr" \
+      "${PROGRAMFILES:-}/Android/Android Studio/jbr" \
+      "${HOME:-}/android-studio/jbr" /opt/android-studio/jbr \
+      /usr/lib/jvm/temurin-17-jdk-amd64 /usr/lib/jvm/temurin-21-jdk-amd64 \
+      /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-21-openjdk-amd64 \
+      /usr/lib/jvm/default-java \
+      /opt/homebrew/opt/openjdk@17 /usr/local/opt/openjdk@17 \
+      /opt/homebrew/opt/openjdk@21 /usr/local/opt/openjdk@21 \
+      "${HOME:-}/.sdkman/candidates/java/current" \
+      ${HOME:-}/.sdkman/candidates/java/* \
+      ${HOME:-}/.gradle/jdks/* \
+      ${HOME:-}/.jdks/* \
+      ${HOME:-}/Library/Java/JavaVirtualMachines/*/Contents/Home \
+      "/Library/Java/JavaVirtualMachines/"*/Contents/Home; do
+    [ -n "$candidate" ] || continue
     if [ -x "$candidate/bin/jlink" ]; then printf '%s\n' "$candidate"; return 0; fi
   done
+
+  # 4 · Last resort: whatever java is on PATH. sed keeps paths with spaces intact.
   if command -v java >/dev/null 2>&1; then
-    candidate="$(java -XshowSettings:properties -version 2>&1 | awk '/^ *java.home = / {print $3}')"
-    if [ -n "${candidate:-}" ] && [ -x "$candidate/bin/jlink" ]; then
-      printf '%s\n' "$candidate"; return 0
+    home="$(java -XshowSettings:properties -version 2>&1 \
+      | sed -n 's/^[[:space:]]*java\.home = //p' | head -n 1)"
+    if [ -n "${home:-}" ] && [ -x "$home/bin/jlink" ]; then
+      printf '%s\n' "$home"; return 0
     fi
   fi
   return 1
 }
 
 JAVA_HOME="$(find_jdk || true)"
-[ -n "$JAVA_HOME" ] || die "no JDK 17-22 found. Install Temurin 17 or set JAVA_HOME to a JDK.
-  A JRE does not work: the Android Gradle plugin runs jlink."
+[ -n "$JAVA_HOME" ] || die "no JDK 17-22 found. A JRE does not work: the Android Gradle
+  plugin runs jlink. Pick one:
+    · Installed Android Studio? Its bundled JBR is a full JDK -- re-run this script, it is
+      already checked at /Applications/Android Studio.app/Contents/jbr/Contents/Home
+    · Otherwise install Temurin 17 from https://adoptium.net/temurin/releases/?version=17
+    · Already have one? export JAVA_HOME=/path/to/jdk  (must contain bin/jlink)
+  Check with:  \"\$JAVA_HOME/bin/jlink\" --version"
 export JAVA_HOME
 JAVA_MAJOR="$("$JAVA_HOME/bin/java" -version 2>&1 | awk -F'"' '/version/ {print $2}' | cut -d. -f1)"
 case "$JAVA_MAJOR" in
-  17|21|22) ;;
+  17|18|19|20|21|22) ;;
   *) die "JDK $JAVA_MAJOR at $JAVA_HOME: Gradle 8.9 needs 17, 21 or 22 (23+ stops with
   'Unsupported class file major version'). Point JAVA_HOME at a JDK 17." ;;
 esac
