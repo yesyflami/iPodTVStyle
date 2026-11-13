@@ -124,27 +124,44 @@ single `___` — put your IP there and send the rest unchanged. The agent clones
 home screen; if the TV asks to allow debugging, confirm with the remote.
 
 ```text
-Please replace my TV's home screen with iPodTVStyle.
+Please put iPodTVStyle on my TV. Your job is to get it installed and working, not to relay
+error messages to me.
 
 Repository: https://github.com/yesyflami/iPodTVStyle
 TV IP: ___
 
-Steps:
-1. Clone the repository above and open the project locally
-2. Read docs/ADAPT.md in the repo and follow it exactly. Do not invent steps
-3. Set up the connection layer once:
-   python3 -m venv tools/venv && tools/venv/bin/pip install -r tools/requirements.txt
-   (Windows: python -m venv tools\venv, then tools\venv\Scripts\python.exe -m pip install -r tools\requirements.txt)
-4. Install it, using the IP above: tools/install.sh
-   (Windows: powershell -ExecutionPolicy Bypass -File tools\install.ps1, same IP)
-   It installs, starts the launcher, checks it came up, and only then takes the Home key.
-   If it stops, read its message and tell me - do not work around it.
-6. Hand me the restore commands it prints at the end
+1. Clone the repository and enter it.
+   If cloning fails with "Failed to connect to 127.0.0.1", that is a proxy environment variable:
+     HTTPS_PROXY= HTTP_PROXY= git clone https://github.com/yesyflami/iPodTVStyle.git
+
+2. Run tools/install.sh <the IP above>  (Windows: tools\install.ps1).
+   It needs Python 3 only -- no JDK, no Android SDK, no adb. Do not install those and do not
+   run tools/build.sh.
+
+3. The TV will ask whether to allow the install. That dialog can only be answered on the TV.
+   Tell me to look at the screen at that point, then wait 10 seconds and check again.
+
+When something fails, deal with it yourself:
+
+| Symptom | What to do |
+|---|---|
+| INSTALL_FAILED_USER_RESTRICTED | Run the script once more. If it fails again, ask me whether I pressed allow and whether unknown sources is on |
+| "No activity found" | Normal on firmware that does not use the standard HOME category. Continue |
+| "Home key did not move here" | This TV only accepts an allow-listed package name. Tell me that one line, not the whole log |
+| "could not reach" | Check the TV is on, on the same Wi-Fi, with network debugging enabled |
+| Python errors | On Windows, tick "Add python.exe to PATH" during setup |
+| Anything else | Read docs/ADAPT.md and docs/FAQ.md first |
 
 Rules:
-- Never uninstall system apps, never root, do not run adb kill-server
-- If it reports INSTALL_FAILED_UPDATE_INCOMPATIBLE, stop and tell me instead of forcing it
-- Do not set STOCK_LAUNCHER= yourself; let the script ask the TV
+- Run the script once per attempt. Do not retry more than three times -- each run puts another
+  dialog on the TV.
+- Do not change anything under launcher/.
+- Do not uninstall other apps and do not root the TV.
+- On failure, do not paste raw logs. One sentence: which step, and what I need to do on the TV.
+- On success, just tell me it worked.
+
+Done means: pressing HOME on the remote opens iPodTVStyle. If HOME still goes to the stock
+launcher, it is not done.
 ```
 
 When it finishes, press **HOME** on the remote.

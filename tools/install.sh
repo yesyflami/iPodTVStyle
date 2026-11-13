@@ -110,8 +110,25 @@ query_home() { tv "$HOME_QUERY" 2>/dev/null | tail -n 1 | tr -d '\r' || true; }
 focus_now()  { tv 'dumpsys window | grep mCurrentFocus' 2>/dev/null | head -n 1 || true; }
 
 # Which launcher owns Home right now -- whatever it is, not just the ones we happen to know.
-STOCK="$(query_home | cut -d/ -f1)"
-[ -n "$STOCK" ] || STOCK=""
+# Which package owns Home. This TV's own launcher does not declare android.intent.category.HOME at
+# all -- it uses a vendor category -- so resolve-activity answers "No activity found" while a
+# perfectly working launcher sits in front. Ask three ways and keep the first real package name.
+home_package() {
+  local candidate
+  for candidate in \
+      "$(query_home | cut -d/ -f1)" \
+      "$(tv 'cmd package resolve-activity --brief -a coocaa.intent.action.HOME' 2>/dev/null | tail -n 1 | tr -d '\r' | cut -d/ -f1)" \
+      "$(focus_now | sed -n 's/.*u0 \([^/]*\)\/.*/\1/p')"; do
+    case "$candidate" in
+      ""|"No activity found"|*" "*) continue ;;
+      android) continue ;;
+    esac
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+STOCK="$(home_package || true)"
 
 # The TV asks the person to confirm every install. That prompt cannot be answered from here -- it
 # is the whole point of it -- so this waits for a human instead of hammering the TV. Each retry has
@@ -120,23 +137,24 @@ push_and_install() {
   local apk="$1" out=""
   "$PY" -I "$TOOLS_DIR/b64push.py" "$apk" /data/local/tmp/ipodtvstyle.apk >/dev/null 2>&1 \
     || { echo "upload-failed"; return 0; }
+  # These TVs swallow the first pm install after an idle spell and accept the identical file a
+  # second later, with nobody touching the remote. Retry quickly rather than making the person
+  # wait, and only mention the TV prompt if a second attempt fails too.
+  # One retry, no more. Every pm install puts a dialog on the TV, so a longer loop turns a failure
+  # into a stream of dialogs instead of a solution. If the second attempt is refused too, the
+  # reason needs a person, not another attempt.
   local attempt=1
-  while [ "$attempt" -le 5 ]; do
+  while [ "$attempt" -le 2 ]; do
     out="$(tv 'pm install -r /data/local/tmp/ipodtvstyle.apk' 2>&1 || true)"
     case "$out" in
       *Success*) echo "installed"; return 0 ;;
       *INSTALL_FAILED_USER_RESTRICTED*|*"canceled by user"*|*"failed to install"*|*Timeout*)
-        if [ "$attempt" -lt 5 ]; then
-          note "  the TV did not get an answer to its install prompt" >&2
-          note "  >>> look at the TV and press ALLOW / 允许 <<<" >&2
-          note "  waiting 20 seconds, then asking again (attempt $attempt of 5)" >&2
-          sleep 20
-        fi
-        attempt=$((attempt + 1)) ;;
-      *) echo "$out"; return 0 ;;
+        attempt=$((attempt + 1))
+        [ "$attempt" -le 2 ] && sleep 2 ;;
+      *) echo "install-refused: $out"; return 0 ;;
     esac
   done
-  echo "$out"
+  echo "install-refused"
 }
 
 note "installing"
@@ -173,9 +191,9 @@ for name in $ORDER; do
   sleep 3
   ALIVE="$(tv "pidof $pkg" 2>/dev/null | tr -d '\r' || true)"
   if [ -z "$ALIVE" ]; then
-    note "  $pkg: installed but will not start; leaving the TV alone"
-    tv "pm uninstall $pkg" >/dev/null 2>&1 || true
-    continue
+    # am start is blocked in the background on some firmware, yet the launcher starts fine once it
+    # owns the Home key. Try again through Home instead of throwing the install away.
+    note "  $pkg: did not start from the command line; will try through the Home key" >&2
   fi
 
   # Step 2 -- hand it Home. Disabling the stock launcher is what makes the Home key land here on
@@ -213,18 +231,17 @@ rm -f "$TOOLS_DIR/../.stock-launcher" 2>/dev/null || true
 
 if [ -z "$WINNER" ]; then
   cat >&2 <<'EOF'
-ERROR: the launcher installed, but this TV would not put it on the Home key.
+ERROR: not installed.
 
-Nothing was left behind: every variant that failed was uninstalled, and the stock
-launcher was re-enabled and given Home back.
+The TV refused the install twice, which happens for one of these reasons:
 
-Two things cancel an install on these TVs, and both need you, not the script:
+  1. A prompt is on screen asking to allow the install and nobody answered it.
+     Watch the TV while this runs; the prompt times out in a few seconds.
+  2. Installing from unknown sources is off:
+     Settings > Security > installing apps from unknown sources.
 
-  · The TV asked "allow this install?" and nobody pressed 允许. Watch the screen
-    while the script runs; the prompt can time out in a few seconds.
-  · Settings > Security > installing apps from unknown sources is switched off.
-
-Run the same command again once either is sorted. Repeating it is safe.
+Sort either one out and run the same command again. Repeating it is safe, and
+nothing was left on the TV.
 EOF
   exit 1
 fi
