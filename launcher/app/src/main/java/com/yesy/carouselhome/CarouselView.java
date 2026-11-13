@@ -67,7 +67,7 @@ public final class CarouselView extends View {
     private static final int FIRST_FRAME_TILES = 5;
     private static final int WARMUP_CHUNK = 4;
     private static final long WARMUP_DELAY_MS = 300L;
-    private static final float LOGO_WIDTH = .54f;
+    private static final float LOGO_WIDTH = .40f;
 
     /**
      * Packages kept out of the ring. This list is empty on purpose: the default is whatever the
@@ -452,36 +452,48 @@ public final class CarouselView extends View {
         int plate = at > 0 ? median(java.util.Arrays.copyOf(background, at)) : 0xfff4f2ee;
         stats.color = plate;
 
-        // The flood has to have eaten a real share of the artwork for the figure to mean anything.
-        // Below that, the "figure" is the whole picture and cutting it out would just shred it.
+        // The flood has to have eaten a real share of the artwork for the remainder to mean
+        // anything. Below that the "figure" is the whole picture and cutting it up would only
+        // shred it.
         float eaten = flooded / (float) (CARD * CARD);
-        if (eaten < .22f || maxX < 0) {
-            stats.bleed = true;
-            return stats;
-        }
-        if (maxX - minX + 1 > CARD * .94f && maxY - minY + 1 > CARD * .94f) {
+        if (eaten < .22f) {
             stats.bleed = true;
             return stats;
         }
 
-        // Crop the figure to its own bounds so it lands centred instead of wherever it happened to
-        // sit inside the icon.
-        int pad = CARD / 40;
-        minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
-        maxX = Math.min(CARD - 1, maxX + pad); maxY = Math.min(CARD - 1, maxY + pad);
-        int width = maxX - minX + 1;
-        int height = maxY - minY + 1;
-        if (width < CARD / 12 || height < CARD / 12) {
+        // Keep the artwork's main subject and drop everything else: wordmarks printed under a
+        // logo, a corner badge, a watermark. "Everything else" is measured, not guessed -- small
+        // components go, and so does anything sitting out in the margins.
+        boolean[] keep = keepCentralSubject(pixels, inside);
+        int left = CARD, top = CARD, right = -1, bottom = -1;
+        for (int y = 0; y < CARD; y++) {
+            int row = y * CARD;
+            for (int x = 0; x < CARD; x++) {
+                if (!keep[row + x]) continue;
+                if (x < left) left = x;
+                if (x > right) right = x;
+                if (y < top) top = y;
+                if (y > bottom) bottom = y;
+            }
+        }
+        if (right < 0 || right - left < CARD / 14 || bottom - top < CARD / 14) {
             stats.bleed = true;
             return stats;
         }
+        int pad = CARD / 40;
+        left = Math.max(0, left - pad); top = Math.max(0, top - pad);
+        right = Math.min(CARD - 1, right + pad); bottom = Math.min(CARD - 1, bottom + pad);
+        int width = right - left + 1;
+        int height = bottom - top + 1;
         int[] cropped = new int[width * height];
         for (int y = 0; y < height; y++) {
-            System.arraycopy(pixels, (minY + y) * CARD + minX, cropped, y * width, width);
-            // Carry the flood mask across too, so background-coloured specks inside the figure's
-            // bounding box do not travel with it.
+            int row = (top + y) * CARD + left;
             for (int x = 0; x < width; x++) {
-                if (inside[(minY + y) * CARD + minX + x]) cropped[y * width + x] = 0;
+                int argb = keep[row + x] ? pixels[row + x] : 0;
+                // A gradient plate does not flood cleanly, so pieces of it survive next to the
+                // figure. Anything still wearing the plate's colour is plate, not subject.
+                if (argb != 0 && near(argb, plate, 30)) argb = 0;
+                cropped[y * width + x] = argb;
             }
         }
         Bitmap glyph = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
@@ -489,6 +501,76 @@ public final class CarouselView extends View {
         stats.logo = glyph;
         stats.logoIsGlyph = true;
         return stats;
+    }
+
+    /**
+     * Components of the figure worth keeping. A logo can be several pieces -- a glyph, a ring, the
+     * dot over an 'i' -- so size alone is not the test; anything at least 40% the size of the
+     * biggest piece stays. What leaves is the small stuff: a wordmark under the logo, a badge in a
+     * corner, a watermark.
+     */
+    private static boolean[] keepCentralSubject(int[] pixels, boolean[] background) {
+        int total = CARD * CARD;
+        int[] label = new int[total];
+        java.util.Arrays.fill(label, -1);
+        int[] queue = new int[total];
+        int[] sizes = new int[1024];
+        int[] sumX = new int[1024];
+        int[] sumY = new int[1024];
+        int labels = 0;
+
+        for (int start = 0; start < total; start++) {
+            if (label[start] != -1 || background[start]) continue;
+            if ((pixels[start] >>> 24) < 24) continue;
+            if (labels == sizes.length) break;
+            int head = 0;
+            int tail = 0;
+            queue[tail++] = start;
+            label[start] = labels;
+            int size = 0;
+            long sx = 0;
+            long sy = 0;
+            while (head < tail) {
+                int at = queue[head++];
+                size++;
+                sx += at % CARD;
+                sy += at / CARD;
+                int x = at % CARD;
+                int y = at / CARD;
+                if (x > 0) tail = labelVisit(pixels, background, label, queue, tail, at - 1, labels);
+                if (x < CARD - 1) tail = labelVisit(pixels, background, label, queue, tail, at + 1, labels);
+                if (y > 0) tail = labelVisit(pixels, background, label, queue, tail, at - CARD, labels);
+                if (y < CARD - 1) tail = labelVisit(pixels, background, label, queue, tail, at + CARD, labels);
+            }
+            sizes[labels] = size;
+            sumX[labels] = (int) (sx / size);
+            sumY[labels] = (int) (sy / size);
+            labels++;
+        }
+        boolean[] keep = new boolean[total];
+        if (labels == 0) return keep;
+
+        int biggest = 0;
+        for (int k = 0; k < labels; k++) biggest = Math.max(biggest, sizes[k]);
+        int floor = Math.max(CARD * CARD / 4000, biggest * 40 / 100);
+        int margin = Math.round(CARD * .12f);
+        for (int at = 0; at < total; at++) {
+            int k = label[at];
+            if (k < 0 || sizes[k] < floor) continue;
+            // A badge lives in a corner; the subject lives in the middle.
+            if (sumX[k] < margin || sumY[k] < margin
+                    || sumX[k] > CARD - margin || sumY[k] > CARD - margin) continue;
+            keep[at] = true;
+        }
+        return keep;
+    }
+
+    private static int labelVisit(int[] pixels, boolean[] background, int[] label, int[] queue,
+                                  int tail, int at, int tag) {
+        if (label[at] != -1 || background[at] || (pixels[at] >>> 24) < 24) return tail;
+        label[at] = tag;
+        queue[tail] = at;
+        return tail + 1;
     }
 
     /**
@@ -799,8 +881,10 @@ public final class CarouselView extends View {
         if (stats != null && stats.logoIsGlyph && stats.logo != null) {
             // The figure sits on a flat field of the colour it was drawn on.
             Bitmap glyph = stats.logo;
-            float maxWidth = CARD * (LOGO_WIDTH + .26f);
-            float maxHeight = CARD * .62f;
+            // Generous padding: the figure occupies the middle of the card and the plate is allowed
+            // to breathe around it.
+            float maxWidth = CARD * (LOGO_WIDTH + .16f);
+            float maxHeight = CARD * .46f;
             float scale = Math.min(maxWidth / glyph.getWidth(), maxHeight / glyph.getHeight());
             float width = glyph.getWidth() * scale;
             float height = glyph.getHeight() * scale;
