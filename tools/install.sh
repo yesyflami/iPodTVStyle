@@ -40,9 +40,17 @@ HOME_QUERY='cmd package resolve-activity --brief -a android.intent.action.MAIN -
 PY="$TOOLS/venv/bin/python"
 [ -x "$PY" ] || PY="$TOOLS/venv/Scripts/python.exe"
 if [ ! -x "$PY" ]; then
-  die "no Python environment yet. Run:
-  python3 -m venv tools/venv && tools/venv/bin/pip install -r tools/requirements.txt
-  (Windows: python -m venv tools\\venv && tools\\venv\\Scripts\\python.exe -m pip install -r tools\\requirements.txt)"
+  note "first run: setting up a local Python environment (one minute, once)"
+  HOST_PY="$(command -v python3 || command -v python || true)"
+  [ -n "$HOST_PY" ] || die "Python 3 is not installed. Install it from https://www.python.org/downloads/
+  (Windows: tick \"Add Python to PATH\" in the installer), then run this again."
+  "$HOST_PY" -m venv "$TOOLS/venv" || die "could not create the Python environment in tools/venv.
+  Nothing was installed on the TV."
+  PY="$TOOLS/venv/bin/python"
+  [ -x "$PY" ] || PY="$TOOLS/venv/Scripts/python.exe"
+  [ -x "$PY" ] || die "the Python environment was created but its interpreter is missing."
+  "$PY" -m pip install --quiet --disable-pip-version-check -r "$TOOLS/requirements.txt" \
+    || die "could not download the Python packages the installer needs. Check your network and retry."
 fi
 tv() { "$PY" -I "$TOOLS/tv.py" "$@"; }
 
@@ -83,31 +91,28 @@ fi
 note "package: $APP_ID   activity: $MAIN_ACTIVITY"
 
 # --- Who owns Home right now? ----------------------------------------------------------------
-if [ -z "${STOCK_LAUNCHER:-}" ]; then
+# Disabling the stock launcher is OFF by default: it is the one step that can leave a TV with
+# no home screen at all, and it is not needed on firmware that accepts any HOME app. Set
+# DISABLE_STOCK=1 to opt in (that is what CleanYourTV's own installer does).
+if [ "${DISABLE_STOCK:-0}" = 1 ] && [ -z "${STOCK_LAUNCHER:-}" ]; then
   HOME_PKG="$(tv "$HOME_QUERY" | tail -n 1 | tr -d '\r' | cut -d/ -f1)" || die "could not ask the
-  TV which launcher owns Home. Pass STOCK_LAUNCHER=<package> (or STOCK_LAUNCHER=none) yourself."
+  TV which launcher owns Home. Pass STOCK_LAUNCHER=<package> yourself."
   case " $KNOWN_STOCK_LAUNCHERS " in
     *" $HOME_PKG "*) STOCK_LAUNCHER="$HOME_PKG" ;;
     *)
-      if [ "$HOME_PKG" = "$APP_ID" ]; then
-        STOCK_LAUNCHER=none
-        note "Home already belongs to this launcher; nothing will be disabled."
-      elif [ "$HOME_PKG" = android ]; then
-        die "Home is Android's launcher chooser (two launchers tie). Pick a default on the TV
-  first, then run this again - or pass STOCK_LAUNCHER=none to keep the chooser."
-      else
-        die "Home resolves to '${HOME_PKG:-nothing}', which is not a launcher this script knows:
-  android = Android's chooser (pick a default on the TV first)
-  anything else = another launcher already owns Home.
-  Re-run with STOCK_LAUNCHER=<package to disable> or STOCK_LAUNCHER=none."
-      fi ;;
+      die "Home resolves to '${HOME_PKG:-nothing}', which is not a launcher this script knows,
+  so refusing to disable it by accident. Leave DISABLE_STOCK unset to keep it, or pass
+  STOCK_LAUNCHER=<package> to name the one to disable." ;;
   esac
 fi
-note "stock launcher: $STOCK_LAUNCHER"
-if [ "$STOCK_LAUNCHER" = none ]; then
-  DISABLE_STOCK="echo stock launcher left alone"
+
+if [ "${DISABLE_STOCK:-0}" = 1 ] && [ "${STOCK_LAUNCHER:-none}" != none ]; then
+  note "stock launcher: $STOCK_LAUNCHER (will be disabled - DISABLE_STOCK=1)"
+  DISABLE_STOCK_CMD="pm disable-user --user 0 $STOCK_LAUNCHER"
 else
-  DISABLE_STOCK="pm disable-user --user 0 $STOCK_LAUNCHER"
+  STOCK_LAUNCHER=none
+  note "stock launcher: left alone (default)"
+  DISABLE_STOCK_CMD="echo stock launcher left alone"
 fi
 
 # --- Install (on its own, so a failed install cannot be followed by disabling the stock launcher)
@@ -159,7 +164,7 @@ fi
 note "handing the Home key to $APP_ID"
 printf '%s\n' \
   "cmd package compile -m speed -f $APP_ID" \
-  "$DISABLE_STOCK" \
+  "$DISABLE_STOCK_CMD" \
   "cmd package set-home-activity --user 0 $APP_ID/$MAIN_ACTIVITY" \
   | tv --batch
 
@@ -214,7 +219,8 @@ Installed. Press Home on the remote.
   stock        : $STOCK_LAUNCHER$( [ "$STOCK_LAUNCHER" = none ] && printf ' (left alone)' || true )
 
 To go back:
-  TV_HOST=$TV_HOST STOCK_LAUNCHER=$STOCK_LAUNCHER tools/venv/bin/python -I tools/tv.py 'pm enable --user 0 $STOCK_LAUNCHER'
+  TV_HOST=$TV_HOST tools/venv/bin/python -I tools/tv.py "pm uninstall $APP_ID"
+  # then pick your old launcher again on the TV, or force it:
   TV_HOST=$TV_HOST tools/venv/bin/python -I tools/tv.py '$HOME_QUERY'
 When you are done with ADB, turn debugging off and check the port is closed:
   python3 tools/adb-closed.py $TV_HOST
