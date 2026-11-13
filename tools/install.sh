@@ -113,20 +113,26 @@ focus_now()  { tv 'dumpsys window | grep mCurrentFocus' 2>/dev/null | head -n 1 
 STOCK="$(query_home | cut -d/ -f1)"
 [ -n "$STOCK" ] || STOCK=""
 
-# The TV's security layer refuses a first install now and then ("canceled by user") and accepts the
-# same file a second later. Retry instead of turning a flaky answer into a failed install.
+# The TV asks the person to confirm every install. That prompt cannot be answered from here -- it
+# is the whole point of it -- so this waits for a human instead of hammering the TV. Each retry has
+# to be started deliberately, because a retry only helps if someone is looking at the screen.
 push_and_install() {
   local apk="$1" out=""
   "$PY" -I "$TOOLS_DIR/b64push.py" "$apk" /data/local/tmp/ipodtvstyle.apk >/dev/null 2>&1 \
     || { echo "upload-failed"; return 0; }
   local attempt=1
-  while [ "$attempt" -le 4 ]; do
+  while [ "$attempt" -le 5 ]; do
     out="$(tv 'pm install -r /data/local/tmp/ipodtvstyle.apk' 2>&1 || true)"
     case "$out" in
       *Success*) echo "installed"; return 0 ;;
-      *INSTALL_FAILED_USER_RESTRICTED*|*"canceled by user"*|*"failed to install"*)
-        note "  the TV refused the install (attempt $attempt of 4); retrying" >&2
-        attempt=$((attempt + 1)); sleep 2 ;;
+      *INSTALL_FAILED_USER_RESTRICTED*|*"canceled by user"*|*"failed to install"*|*Timeout*)
+        if [ "$attempt" -lt 5 ]; then
+          note "  the TV did not get an answer to its install prompt" >&2
+          note "  >>> look at the TV and press ALLOW / 允许 <<<" >&2
+          note "  waiting 20 seconds, then asking again (attempt $attempt of 5)" >&2
+          sleep 20
+        fi
+        attempt=$((attempt + 1)) ;;
       *) echo "$out"; return 0 ;;
     esac
   done
@@ -134,6 +140,18 @@ push_and_install() {
 }
 
 note "installing"
+cat >&2 <<'NOTICE'
+
+  ------------------------------------------------------------------
+   Keep watching the TV from here on. It will ask whether to allow
+   installing this app -- press ALLOW (允许) with the remote.
+
+   Nobody can answer that prompt from the computer, and if it is
+   ignored the install is cancelled. This is the one step that needs
+   your hands.
+  ------------------------------------------------------------------
+
+NOTICE
 WINNER=""
 for name in $ORDER; do
   apk="$PREBUILT/$name.apk"
@@ -200,11 +218,13 @@ ERROR: the launcher installed, but this TV would not put it on the Home key.
 Nothing was left behind: every variant that failed was uninstalled, and the stock
 launcher was re-enabled and given Home back.
 
-What this means in practice: the TV refuses to start our activity, usually because
-its security layer is blocking the install or the launch. Check, on the TV:
-  · Settings > Security > allow installation from unknown sources
-  · Settings > Developer options > network debugging still on
-Then run the same command again -- it is safe to repeat.
+Two things cancel an install on these TVs, and both need you, not the script:
+
+  · The TV asked "allow this install?" and nobody pressed 允许. Watch the screen
+    while the script runs; the prompt can time out in a few seconds.
+  · Settings > Security > installing apps from unknown sources is switched off.
+
+Run the same command again once either is sorted. Repeating it is safe.
 EOF
   exit 1
 fi
