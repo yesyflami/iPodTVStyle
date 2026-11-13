@@ -7,6 +7,7 @@
 #   tools/build.sh
 #   tools/build.sh -PlauncherApplicationId=com.coocaa.cleanhome   # firmware with a HOME allowlist
 set -euo pipefail
+TOOLS_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$(dirname "$0")/../launcher"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -51,7 +52,9 @@ find_jdk() {
       ${HOME:-}/.gradle/jdks/* \
       ${HOME:-}/.jdks/* \
       ${HOME:-}/Library/Java/JavaVirtualMachines/*/Contents/Home \
-      "/Library/Java/JavaVirtualMachines/"*/Contents/Home; do
+      "/Library/Java/JavaVirtualMachines/"*/Contents/Home \
+      ${HOME:-}/Documents/Codex/*/work/jdk/Contents/Home \
+      ${HOME:-}/Documents/*/work/jdk/Contents/Home; do
     [ -n "$candidate" ] || continue
     if [ -x "$candidate/bin/jlink" ]; then printf '%s\n' "$candidate"; return 0; fi
   done
@@ -67,13 +70,65 @@ find_jdk() {
   return 1
 }
 
+# --- No JDK anywhere? Fetch one. ------------------------------------------------------------
+# Every JDK on this machine was just ruled out (none at all, or a JRE, or a 23+ that Gradle 8.9
+# refuses). Asking the person to go install one is where this flow used to end. Download a
+# Temurin 17 into tools/jdk instead: it is checked once, stays out of the system, and makes the
+# promised "one command" true on a machine that has never seen Java.
+fetch_jdk() {
+  local os arch url tmp
+  case "$(uname -s)" in
+    Darwin) os=mac ;;
+    Linux)  os=linux ;;
+    *) return 1 ;;
+  esac
+  case "$(uname -m)" in
+    arm64|aarch64) arch=aarch64 ;;
+    x86_64|amd64)  arch=x64 ;;
+    *) return 1 ;;
+  esac
+  command -v curl >/dev/null 2>&1 || return 1
+  command -v tar  >/dev/null 2>&1 || return 1
+
+  url="https://api.adoptium.net/v3/binary/latest/17/ga/${os}/${arch}/jdk/hotspot/normal/eclipse"
+  mkdir -p "$TOOLS_CACHE"
+  # Keep the partial file between attempts so a flaky connection resumes instead of restarting.
+  tarball="$TOOLS_CACHE/temurin17.tar.gz"
+  echo "==> no JDK on this computer; downloading Temurin 17 once (~180 MB, kept in .jdk-cache/)" >&2
+  attempt=1
+  while [ "$attempt" -le 4 ]; do
+    if curl -fsSL -C - --connect-timeout 20 --speed-time 45 --speed-limit 2048 \
+        -o "$tarball" "$url"; then
+      break
+    fi
+    echo "    download interrupted (attempt $attempt of 4); resuming..." >&2
+    attempt=$((attempt + 1))
+    sleep 2
+  done
+  [ -s "$tarball" ] || { rm -f "$tarball"; return 1; }
+  if ! tar -xzf "$tarball" -C "$TOOLS_CACHE" 2>/dev/null; then
+    rm -f "$tarball"; return 1
+  fi
+  rm -f "$tarball"
+  # The tarball unpacks as jdk-17.0.x+y/; pick the one that actually has jlink.
+  for candidate in "$TOOLS_CACHE"/jdk-*/Contents/Home "$TOOLS_CACHE"/jdk-*; do
+    if [ -x "$candidate/bin/jlink" ]; then printf '%s\n' "$candidate"; return 0; fi
+  done
+  return 1
+}
+
+TOOLS_CACHE="$TOOLS_DIR/../.jdk-cache"
+mkdir -p "$TOOLS_CACHE" 2>/dev/null || true
+
 JAVA_HOME="$(find_jdk || true)"
-[ -n "$JAVA_HOME" ] || die "no JDK 17-22 found. A JRE does not work: the Android Gradle
-  plugin runs jlink. Pick one:
-    · Installed Android Studio? Its bundled JBR is a full JDK -- re-run this script, it is
-      already checked at /Applications/Android Studio.app/Contents/jbr/Contents/Home
-    · Otherwise install Temurin 17 from https://adoptium.net/temurin/releases/?version=17
-    · Already have one? export JAVA_HOME=/path/to/jdk  (must contain bin/jlink)
+if [ -z "$JAVA_HOME" ] && [ "${SKIP_JDK_DOWNLOAD:-0}" != 1 ]; then
+  JAVA_HOME="$(fetch_jdk || true)"
+fi
+[ -n "$JAVA_HOME" ] || die "no JDK 17-22 found, and downloading one did not work either.
+  A JRE does not work: the Android Gradle plugin runs jlink. Options:
+    · install Temurin 17 from https://adoptium.net/temurin/releases/?version=17
+    · or set JAVA_HOME to a JDK 17 (it must contain bin/jlink)
+    · or re-run with network access so the automatic download can complete
   Check with:  \"\$JAVA_HOME/bin/jlink\" --version"
 export JAVA_HOME
 JAVA_MAJOR="$("$JAVA_HOME/bin/java" -version 2>&1 | awk -F'"' '/version/ {print $2}' | cut -d. -f1)"
