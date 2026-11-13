@@ -28,3 +28,4 @@ promo/*.png.tmp
 # promo render output (regenerate with promo/render.sh)
 promo/*.mp4
 .jdk-cache/
+.stock-launcher

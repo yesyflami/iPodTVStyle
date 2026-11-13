@@ -71,6 +71,21 @@ if [ "$ACTION" = uninstall ]; then
     pkg="$(pkg_of "$apk")"
     tv "pm uninstall $pkg" >/dev/null 2>&1 && note "removed $pkg" || true
   done
+
+  # Put the stock launcher back if we were the ones who turned it off. Without this the TV can be
+  # left with no home screen at all, which is a much worse outcome than a failed install.
+  STATE="$TOOLS_DIR/../.stock-launcher"
+  if [ -f "$STATE" ]; then
+    STOCKED="$(tr -d ' \r\n' < "$STATE")"
+    if [ -n "$STOCKED" ]; then
+      tv "pm enable --user 0 $STOCKED" >/dev/null 2>&1 \
+        && note "re-enabled $STOCKED" || note "could not re-enable $STOCKED -- turn it on in Settings > Apps"
+      COMPONENT="$(tv "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME $STOCKED" 2>/dev/null | tail -n 1 | tr -d '\r')"
+      [ -n "$COMPONENT" ] && tv "cmd package set-home-activity --user 0 $COMPONENT" >/dev/null 2>&1 || true
+    fi
+    rm -f "$STATE"
+  fi
+  tv 'input keyevent KEYCODE_HOME' >/dev/null 2>&1 || true
   note "done. Press Home on the remote; if the TV asks which launcher, pick your old one."
   exit 0
 fi
@@ -89,7 +104,34 @@ SDK="$(tv 'getprop ro.build.version.sdk' 2>/dev/null | tr -dc '0-9' || true)"
 HOME_QUERY='cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME'
 query_home() { tv "$HOME_QUERY" 2>/dev/null | tail -n 1 | tr -d '\r' || true; }
 
-ORDER="${VARIANTS:-ipodtvstyle-neutral ipodtvstyle-skyworth ipodtvstyle-xiaomi ipodtvstyle-tcl}"
+ORDER="${VARIANTS:-ipodtvstyle-skyworth ipodtvstyle-neutral ipodtvstyle-tcl}"
+HOME_QUERY='cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME'
+query_home() { tv "$HOME_QUERY" 2>/dev/null | tail -n 1 | tr -d '\r' || true; }
+focus_now()  { tv 'dumpsys window | grep mCurrentFocus' 2>/dev/null | head -n 1 || true; }
+
+# Which launcher owns Home right now -- whatever it is, not just the ones we happen to know.
+STOCK="$(query_home | cut -d/ -f1)"
+[ -n "$STOCK" ] || STOCK=""
+
+# The TV's security layer refuses a first install now and then ("canceled by user") and accepts the
+# same file a second later. Retry instead of turning a flaky answer into a failed install.
+push_and_install() {
+  local apk="$1" out=""
+  "$PY" -I "$TOOLS_DIR/b64push.py" "$apk" /data/local/tmp/ipodtvstyle.apk >/dev/null 2>&1 \
+    || { echo "upload-failed"; return 0; }
+  local attempt=1
+  while [ "$attempt" -le 4 ]; do
+    out="$(tv 'pm install -r /data/local/tmp/ipodtvstyle.apk' 2>&1 || true)"
+    case "$out" in
+      *Success*) echo "installed"; return 0 ;;
+      *INSTALL_FAILED_USER_RESTRICTED*|*"canceled by user"*|*"failed to install"*)
+        note "  the TV refused the install (attempt $attempt of 4); retrying" >&2
+        attempt=$((attempt + 1)); sleep 2 ;;
+      *) echo "$out"; return 0 ;;
+    esac
+  done
+  echo "$out"
+}
 
 note "installing"
 WINNER=""
@@ -99,47 +141,70 @@ for name in $ORDER; do
   pkg="$(pkg_of "$apk")"
   [ -n "$pkg" ] || continue
 
-  "$PY" -I "$TOOLS_DIR/b64push.py" "$apk" /data/local/tmp/ipodtvstyle.apk >/dev/null 2>&1 \
-    || die "could not upload the APK to the TV."
-  OUT="$(tv 'pm install -r /data/local/tmp/ipodtvstyle.apk; rm -f /data/local/tmp/ipodtvstyle.apk' 2>&1 || true)"
-  case "$OUT" in
-    *Success*) ;;
-    *) note "  $pkg: install refused, trying the next variant"; continue ;;
+  RESULT="$(push_and_install "$apk" | tail -1)"
+  case "$RESULT" in
+    installed) ;;
+    *) note "  $pkg: $RESULT"; continue ;;
   esac
 
   tv "cmd package compile -m speed -f $pkg" >/dev/null 2>&1 || true
-  tv "cmd package set-home-activity --user 0 $pkg/$MAIN_ACTIVITY" >/dev/null 2>&1 || true
-  tv "am start -n $pkg/$MAIN_ACTIVITY" >/dev/null 2>&1 || true
-  sleep 2
 
-  # resolve-activity only echoes what set-home-activity just wrote. Coocaa/Skyworth firmware
-  # routes the physical Home key through vendor properties and ignores that value, so press the
-  # key and see who is actually in front -- that is the only answer that matters.
+  # Step 1 -- does the launcher actually run? An install that cannot start is worthless, and
+  # checking now means the stock launcher is still untouched if it cannot.
+  tv "am start -n $pkg/$MAIN_ACTIVITY" >/dev/null 2>&1 || true
+  sleep 3
+  ALIVE="$(tv "pidof $pkg" 2>/dev/null | tr -d '\r' || true)"
+  if [ -z "$ALIVE" ]; then
+    note "  $pkg: installed but will not start; leaving the TV alone"
+    tv "pm uninstall $pkg" >/dev/null 2>&1 || true
+    continue
+  fi
+
+  # Step 2 -- hand it Home. Disabling the stock launcher is what makes the Home key land here on
+  # firmware that routes Home through its own list; without it the key ignores the preference and
+  # goes straight back to the vendor launcher, which is exactly the "installed but never becomes
+  # Home" loop this script used to end in. It is undone below if the handover does not complete.
+  if [ -n "$STOCK" ] && [ "$STOCK" != "$pkg" ]; then
+    tv "pm disable-user --user 0 $STOCK" >/dev/null 2>&1 || true
+  fi
+  tv "cmd package set-home-activity --user 0 $pkg/$MAIN_ACTIVITY" >/dev/null 2>&1 || true
   tv 'input keyevent KEYCODE_HOME' >/dev/null 2>&1 || true
-  sleep 2
-  FOCUS="$(tv 'dumpsys window | grep mCurrentFocus' 2>/dev/null | head -n 1 || true)"
+  sleep 3
+  FOCUS="$(focus_now)"
+
   case "$FOCUS" in
-    *"$pkg"*) WINNER="$pkg"; note "  $pkg: Home key lands here"; break ;;
-    *)
-      note "  $pkg: installed, but the Home key still goes to the stock launcher"
-      tv "pm uninstall $pkg" >/dev/null 2>&1 || true
-      ;;
+    *"$pkg"*)
+      WINNER="$pkg"
+      # Remember whose Home we took, so --uninstall can hand it back.
+      if [ -n "$STOCK" ] && [ "$STOCK" != "$pkg" ]; then
+        printf '%s\n' "$STOCK" > "$TOOLS_DIR/../.stock-launcher" 2>/dev/null || true
+      fi
+      note "  $pkg: Home key lands here"
+      break ;;
   esac
+
+  # Not ours. Put the TV back exactly as it was before trying another variant.
+  note "  $pkg: Home key did not move here; putting the TV back"
+  if [ -n "$STOCK" ] && [ "$STOCK" != "$pkg" ]; then
+    tv "pm enable --user 0 $STOCK" >/dev/null 2>&1 || true
+    tv "cmd package set-home-activity --user 0 $STOCK/$(tv "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME $STOCK" 2>/dev/null | tail -n 1 | tr -d '\r' | cut -d/ -f2)" >/dev/null 2>&1 || true
+  fi
+  tv "pm uninstall $pkg" >/dev/null 2>&1 || true
 done
+rm -f "$TOOLS_DIR/../.stock-launcher" 2>/dev/null || true
 
 if [ -z "$WINNER" ]; then
   cat >&2 <<'EOF'
-ERROR: every variant installed cleanly, but none was allowed to become Home.
+ERROR: the launcher installed, but this TV would not put it on the Home key.
 
-This TV only hands Home to a package name on its own allow-list, and none of the
-names shipped in prebuilt/ is on it. Nothing was left behind (each attempt was
-uninstalled) and your stock launcher is untouched.
+Nothing was left behind: every variant that failed was uninstalled, and the stock
+launcher was re-enabled and given Home back.
 
-Options:
-  · Contribute your model: docs/devices/README.md shows what to record.
-  · Build a variant with your TV's own Home package name:
-      tools/build.sh -PlauncherApplicationId=<the name>      (needs a JDK + Android SDK)
-    Find that name with, on the TV:  pm list packages | grep -i launch
+What this means in practice: the TV refuses to start our activity, usually because
+its security layer is blocking the install or the launch. Check, on the TV:
+  · Settings > Security > allow installation from unknown sources
+  · Settings > Developer options > network debugging still on
+Then run the same command again -- it is safe to repeat.
 EOF
   exit 1
 fi
