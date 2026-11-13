@@ -218,32 +218,13 @@ public final class CarouselView extends View {
         return file.isFile() ? file.lastModified() + ":" + file.length() : "-";
     }
 
-    /** The face for the selected label, resolved once per app and then cached on the tile. */
+    /** Every label uses {@link #appFace}; the per-item cache is no longer needed to pick a face. */
     private Typeface selectedFace() {
-        AppItem app = apps[selected];
-        if (app.nameFace == null) app.nameFace = nameFaceFor(app.name);
-        return app.nameFace;
+        return appFace;
     }
 
     private Typeface nameFaceFor(String label) {
-        if (covers(nameSerif, label)) return nameSerif;
-        // The bundled subset only carries the reference TV's glyphs: anything else falls back to
-        // the system face, so a Chinese app name never comes out as tofu boxes.
-        return Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD);
-    }
-
-    private static boolean covers(Typeface face, String text) {
-        if (face == null || text == null) return false;
-        Paint probe = new Paint();
-        probe.setTypeface(face);
-        for (int index = 0; index < text.length(); ) {
-            int codePoint = text.codePointAt(index);
-            index += Character.charCount(codePoint);
-            if (codePoint <= 0x20) continue;
-            // Paint.hasGlyph only takes a String -- there is no int overload.
-            if (!probe.hasGlyph(new String(Character.toChars(codePoint)))) return false;
-        }
-        return true;
+        return appFace;
     }
 
     private static String settingsLabel(PackageManager manager) {
@@ -286,9 +267,16 @@ public final class CarouselView extends View {
             DateFormat.getBestDateTimePattern(Locale.getDefault(), "yMMMdEEEE"),
             Locale.getDefault());
     private final SharedPreferences preferences;
-    private final Typeface clockFace = loadFace("/system/fonts/Roboto-Black.ttf", "sans-serif-black");
-    private final Typeface dateFace = loadFace("/system/fonts/Roboto-Medium.ttf", "sans-serif-medium");
-    private Typeface nameSerif;
+    /**
+     * One face for every piece of text in the app.
+     *
+     * It is deliberately the system default rather than a bundled file: every TV that draws a
+     * Chinese menu must ship a CJK font, so the default is the only face guaranteed to have every
+     * character on every model. Bold comes from the paints (setFakeBoldText) instead of a bold
+     * face, because no TV bundles a bold CJK font -- asking for Typeface.BOLD gives bold Latin and
+     * regular Chinese in the same line, which is exactly the mismatch this replaces.
+     */
+    private final Typeface appFace = Typeface.DEFAULT;
 
     private int selected = 0;
     private int headerFocus = -1;
@@ -315,7 +303,6 @@ public final class CarouselView extends View {
         dark = preferences.getBoolean("dark", false);
         // Loaded here rather than in a field initialiser: getContext() is still null at that
         // point, which is why the bundled serif face used to silently fall back.
-        nameSerif = loadNameFace();
         apps = discoverApps();
         installedSignature = currentSignature(apps);
         renderOrder = new int[apps.length];
@@ -945,7 +932,8 @@ public final class CarouselView extends View {
         if (app.nameFace == null) app.nameFace = nameFaceFor(app.name);
         Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
         label.setColor(0xfffdfdfd);
-        label.setTypeface(app.nameFace);
+        label.setTypeface(appFace);
+        label.setFakeBoldText(true);
         label.setTextAlign(Paint.Align.CENTER);
         float size = 56f;
         label.setTextSize(size);
@@ -1175,14 +1163,14 @@ public final class CarouselView extends View {
 
         textPaint.setColor(foreground);
         textPaint.setTextSize(44f);
-        textPaint.setFakeBoldText(false);
+        textPaint.setFakeBoldText(true);
         textPaint.setTypeface(selectedFace());
         textPaint.setLetterSpacing(.015f);
         textPaint.setStyle(Paint.Style.FILL);
         textPaint.setStrokeWidth(0f);
         textPaint.setTextAlign(Paint.Align.CENTER);
         canvas.drawText(apps[selected].name, 960f, 823f, textPaint);
-        textPaint.setFakeBoldText(false);
+        textPaint.setFakeBoldText(true);
         textPaint.setTypeface(Typeface.DEFAULT);
         textPaint.setLetterSpacing(0f);
         textPaint.setStyle(Paint.Style.FILL);
@@ -1314,14 +1302,14 @@ public final class CarouselView extends View {
         textPaint.setTextAlign(Paint.Align.LEFT);
         textPaint.setStyle(Paint.Style.FILL);
         textPaint.setStrokeWidth(0f);
-        textPaint.setFakeBoldText(false);
-        textPaint.setTypeface(clockFace);
+        textPaint.setFakeBoldText(true);
+        textPaint.setTypeface(appFace);
         textPaint.setColor(foreground);
         textPaint.setTextSize(48f);
         textPaint.setLetterSpacing(-0.02f);
         canvas.drawText(timeFormat.format(now), 128f, 72f, textPaint);
-        textPaint.setTypeface(dateFace);
-        textPaint.setFakeBoldText(false);
+        textPaint.setTypeface(appFace);
+        textPaint.setFakeBoldText(true);
         textPaint.setTextSize(18f);
         textPaint.setLetterSpacing(0.11f);
         textPaint.setColor(dark ? 0xff9a9a9a : 0xff8e8e93);
@@ -1339,24 +1327,6 @@ public final class CarouselView extends View {
         canvas.drawLine(0f, 124f, 1920f, 124f, strokePaint);
     }
 
-    /** Serif for the selected app name: bundled subset covers CJK, which the TV lacks in serif. */
-    private Typeface loadNameFace() {
-        try {
-            return Typeface.createFromAsset(getContext().getAssets(), "app_name_serif.ttf");
-        } catch (RuntimeException ignored) {
-            return Typeface.create(Typeface.SERIF, Typeface.BOLD);
-        }
-    }
-
-    private static Typeface loadFace(String path, String family) {
-        try {
-            Typeface fileFace = Typeface.createFromFile(path);
-            if (fileFace != null) return fileFace;
-        } catch (RuntimeException ignored) {
-        }
-        Typeface created = Typeface.create(family, Typeface.NORMAL);
-        return created != null ? created : Typeface.DEFAULT_BOLD;
-    }
 
     private void drawButtonBase(Canvas canvas, float cx, float cy, float radius, boolean focused) {
         // Nothing is drawn at rest, so the icons sit on the bare background in both themes;
